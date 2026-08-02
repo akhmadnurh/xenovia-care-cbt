@@ -151,62 +151,92 @@ Kemudian tanyakan: "Semua catatan CBT kita hari ini udah lengkap dan jernih nih.
 
 const executeAnchorFlow = (chatId) => {
   const negRows = getNegativeRowsLastNDays(30);
-  let distilledSentence = DEFAULT_ANCHOR_SENTENCE;
 
-  if (negRows.length > 0) {
-    const promptDistill = `Kamu adalah Xenovia Care, asisten CBT.
-Berikut adalah beberapa catatan Pikiran Seimbang (reframing) pengguna terkait isu pemicu utama kecemasan dalam 30 hari terakhir:
-${JSON.stringify(
-  negRows.map((r) => r.pikiranSeimbang),
-  null,
-  2,
-)}
+  const journalContext =
+    negRows.length > 0
+      ? negRows
+          .map(
+            (r) =>
+              `- Tanggal: ${r.tanggal} | Peristiwa: ${r.peristiwa} | Pikiran: ${r.pikiranOtomatis} | Emosi: ${r.emosi} | Bukti Tandingan: ${r.buktiTandingan} | Pikiran Seimbang: ${r.pikiranSeimbang}`,
+          )
+          .join("\n")
+      : "(Belum ada catatan jurnal dalam 30 hari terakhir)";
 
-TUGAS UTAMA:
-Suling/ringkas data Pikiran Seimbang di atas menjadi 1 KALIMAT SAKTI UTAMA untuk afirmasi pagi pengguna.
+  const promptAnchor = `Kamu adalah Xenovia Care — pendamping CBT yang hangat, tenang, dan grounded. Tugasmu menghasilkan pesan selamat pagi + 1 kalimat afirmasi "Pegangan Utama Hari Ini" (anchor).
 
-ATURAN KETAT (HARAM MELENCENG):
-1. WAJIB menggunakan sudut pandang orang pertama ("Aku...").
-2. Kalimat harus simpel, sangat humanis, hangat, dan mudah dibaca saat baru bangun tidur.
-3. DILARANG KERAS menggunakan tanda baca em-dash atau dua strip (--)!
-4. DILARANG KERAS menggunakan kata "hari ini"!
-5. Hanya berikan 1 KALIMAT SAKTI saja tanpa salam, tanpa narasi, dan tanpa tanda petik berlebih.`;
+KONTEKS JURNAL PENGGUNA (30 HARI TERAKHIR):
+${journalContext}
 
-    const aiRes = callGemini(promptDistill, 0.3);
-    if (aiRes && aiRes.trim() !== "") {
-      distilledSentence = sanitizeQuotes(aiRes);
-    }
+Gunakan data jurnal di atas HANYA untuk memahami kebutuhan emosional pengguna. JANGAN mengutip ulang gejala atau peristiwa spesifik dari jurnal.
+
+TONE OF VOICE (STRICT):
+- DILARANG bahasa gaul extreme / lebay: 'bosku', 'lu', 'nongkrong', 'gas pol', 'urusan dunia', 'bestie', 'gengs', 'cuy', 'beb', dll.
+- DILARANG bahasa retoris / bertele-tele: format tanya-jawab seperti "Capek mikirin skenario buruk? Mending...".
+- DILARANG bahasa puitis / mendayu-dayu: "merangkul kelembutan", "memeluk diri", "proses pemulihan yang indah".
+- DILARANG cringey: "kesayangan", "peluk jauh", "dekap".
+- DILARANG tanda baca em-dash atau dua strip (--)!
+- Gunakan bahasa Indonesia kasual yang natural, tenang, sopan, ramah, dan grounded — layaknya teman pendamping yang dewasa.
+
+SALAM PAGI (WAJIB):
+- Maksimal 1-2 kalimat pendek, ringkas, hangat, tanpa basa-basi panjang.
+- Varian konteks: kadang tanya kabar, kadang pengingat minum air, kadang sekadar nyapa singkat.
+
+PEGANGAN UTAMA / ANCHOR (WAJIB):
+- Maksimal 1 kalimat padat, di bawah 15 kata.
+- DILARANG bertele-tele atau membuat analogi panjang.
+- DILARANG TANDA PETIK di dalam anchor (Sistem JS yang akan menambahkannya).
+- DILARANG selalu memakai frasa "di depan mata" secara terus-menerus.
+- PILIH SALAH SATU dari 5 sudut pandang berikut secara ACAK tiap dipanggil. Karang kalimat fresh sendiri (JANGAN copy-paste contoh):
+  1. Penerimaan Hari: hari ini gak harus berjalan mulus untuk tetap bisa dinikmati.
+  2. Batas Diri: gak perlu menyelesaikan segalanya, cukup seperlunya.
+  3. Kontrol Diri: sensasi bisa naik turun, tapi kendali respons tetap ada di tanganku.
+  4. Kehadiran Saat Ini: aku aman di detik ini, hal yang belum terjadi gak perlu dipikirkan.
+  5. Self-Compassion: pelan-pelan saja, istirahat sejenak bukan tanda menyerah.
+- ROTASIKAN ke-5 sudut pandang di atas secara SEIMBANG — jangan terpaku pada satu tema saja.
+
+STRUKTUR OUTPUT (HANYA DUA BARIS, TANPA TEKS TAMBAHAN):
+SALAM: [1-2 kalimat salam pagi yang segar & variatif]
+ANCHOR: [1 kalimat anchor singkat tanpa tanda petik]`;
+
+  // Build anchor message with hard‑enforced quotes and SALAM/ANCHOR parsing
+  const aiRes = callGemini(promptAnchor, 0.4);
+  let anchorText;
+  if (aiRes && aiRes.trim() !== "") {
+    // Expected two lines: SALAM: ... and ANCHOR: ...
+    const lines = aiRes
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    let salam = DEFAULT_MORNING_GREETING;
+    let anchor = DEFAULT_ANCHOR_SENTENCE;
+    lines.forEach((line) => {
+      const upper = line.toUpperCase();
+      if (upper.startsWith("SALAM:")) {
+        salam = line.substring(6).trim();
+      } else if (upper.startsWith("ANCHOR:")) {
+        anchor = line.substring(7).trim();
+      }
+    });
+    // Remove any stray quotes from anchor then wrap with required quotes
+    const cleanAnchor = anchor.replace(/^"+|"+$/g, "");
+    anchorText = `🌅 **Selamat Pagi!**\n${salam}\n\n💡 **Pegangan Utama Hari Ini:**\n"${cleanAnchor}"`;
+  } else {
+    // Fallback to defaults, ensuring quotes are present
+    anchorText = `🌅 **Selamat Pagi!**\n${DEFAULT_MORNING_GREETING}\n\n💡 **Pegangan Utama Hari Ini:**\n"${DEFAULT_ANCHOR_SENTENCE}"`;
   }
 
   const widgetSs = SpreadsheetApp.getActiveSpreadsheet();
   let widgetSheet =
     widgetSs.getSheetByName("Widget_Anchor") ??
     widgetSs.insertSheet("Widget_Anchor");
-  widgetSheet.getRange("A1").setValue(sanitizeQuotes(distilledSentence));
+  const distilledLine = anchorText.includes("Pegangan Utama Hari Ini:")
+    ? (anchorText.split("Pegangan Utama Hari Ini:")[1] ?? "")
+        .replace(/[""]/g, "")
+        .trim()
+    : anchorText;
+  widgetSheet.getRange("A1").setValue(distilledLine);
   const { dateStr, timeStr } = formatTimestampJakarta();
   widgetSheet.getRange("B1").setValue(`Last Update: ${dateStr} ${timeStr}`);
-
-  const promptGreeting = `Kamu adalah Xenovia Care, teman dekat yang sangat hangat, ramah, realistis, dan empatis.
-Buatkan 2-3 KALIMAT SAPAAN/PENYEMANGAT PAGI YANG BERVARIASI DAN HANGAT untuk pengguna yang baru bangun tidur di pagi hari sebelum sholat Subuh.
-
-ATURAN KETAT:
-1. Panjang wajib 2 hingga 3 kalimat yang terasa lega, santai, membumi, dan menguatkan.
-2. DILARANG KERAS menggunakan panggilan atau kata-kata cringey/pujangga (seperti "kesayangan", "peluk jauh", "dekap", dsb.).
-3. DILARANG KERAS menggunakan gaya bahasa kaku CS bank.
-4. DILARANG KERAS menggunakan kata "hari ini" secara berlebihan.
-5. Cukup 2-3 kalimat mengalir alami tanpa header/emoji berlebih.`;
-
-  let morningGreeting = DEFAULT_MORNING_GREETING;
-  const greetingRes = callGemini(promptGreeting, 0.7);
-  if (greetingRes && greetingRes.trim() !== "")
-    morningGreeting = greetingRes.trim();
-
-  const anchorText = `🌅 *Selamat pagi!*
-
-${morningGreeting}
-
-💡 *Pegangan Utama Hari Ini:*
-"${distilledSentence}"`;
 
   unpinAllTelegramMessages(chatId);
   const sentRes = sendTelegramMessage(chatId, anchorText);
@@ -314,4 +344,72 @@ const handleReframeCallback = (chatId, callbackData) => {
     messageText += `• *${r.pikiranSeimbang}*\n\n`;
   });
   sendTelegramMessage(chatId, messageText.trim());
+};
+
+const generateWinNarrative = (record) => {
+  const prompt = `Kamu adalah Xenovia Care, asisten psikologi CBT yang hangat dan manusiawi. Berikut adalah catatan positif dari jurnal CBT pengguna di masa lalu:
+
+- Tanggal: ${record.tanggal}
+- Peristiwa: ${record.peristiwa}
+- Pikiran Otomatis: ${record.pikiranOtomatis}
+- Emosi & Skala: ${record.emosi}
+- Distorsi Kognitif: ${record.distorsi}
+- Bukti Tandingan: ${record.buktiTandingan}
+- Pikiran Seimbang: ${record.pikiranSeimbang}
+
+TUGAS:
+Ceritakan kembali kemenangan kecil pengguna ini sebagai narasi yang hangat, personal, dan membumi.
+
+ATURAN TONE (STRICT):
+- HARAM menggunakan kalimat toxic positivity atau motivasi kosong: "Semangat ya!", "Pasti bisa!", "Jangan cemas!", "Harus positif!", "Everything will be fine!".
+- Gunakan nada bicara seperti teman dekat yang mengingatkan pengguna akan keberhasilannya sendiri — hangat, jujur, tanpa menggurui.
+- GAYA CHAT MURNI: Tulis seperti mengirim pesan WhatsApp/Telegram kepada teman. Narasi harus mengalir natural sebagai paragraf cerita utuh yang menyatu. JANGAN gunakan emoji penanda di awal paragraf (🚫🌿, 📜, 💡, ⚓ di awal baris).
+- ATURAN EMOJI DINAMIS (FULL CONTEXTUAL FREEDOM): Kamu bebas memilih dan menggunakan EMOJI APA PUN dari pustaka emoji yang menurutmu paling pas, relevan, dan bernyawa sesuai dengan konteks cerita/catatan yang sedang di-recall. Jangan terbatas pada emoji tertentu. Sesuaikan emoji secara organik dengan nuansa emosi, peristiwa, atau objek spesifik yang ada di catatan (misal: aktivitas fisik, hiburan, suasana alam, rasa lega, keberhasilan, dll). Selipkan 2-4 emoji tersebut secara alami di tengah atau akhir kalimat agar terasa seperti pesan chat yang personal, tulus, dan ramah.
+
+STRUKTUR (Wajib ikuti urutan paragraf ini — tanpa emoji penanda di awal):
+Paragraf 1 — Validasi:
+Validasi bahwa lelah/cemas yang dirasakan pengguna SEKARANG adalah respon yang wajar, bukan kemunduran. Contoh pembuka: "Halo. Jika hari ini kamu merasa lelah, berat, atau kecemasan itu kembali mendekat..."
+
+Paragraf 2-3 — Cerita Masa Lalu:
+Narasi pengingat data masa lalu tersebut — ceritakan peristiwa, sensasi, pikiran, dan emosi yang pengguna alami saat itu. Detail spesifik dan natural, JANGAN berupa daftar/bullet. Gunakan sudut pandang kedua ("Ingatkah kamu pada [Tanggal]? Saat itu, kamu...").
+
+Paragraf 4 — Penguat Penutup:
+Penguat logis bahwa pengguna SEKARANG masih memegang kendali yang sama seperti saat itu. Bukan soal "bisa", tapi soal "sudah terbukti pernah". Contoh penutup: "Hari ini, kamu tidak perlu memikirkan apakah kamu 'bisa' atau tidak. Ingatlah bahwa kamu sudah terbukti pernah melakukannya 🤍."
+
+FORMAT:
+- Murni gaya chat — paragraf mengalir tanpa emoji penanda di awal baris.
+- Selipkan 2-4 emoji kontekstual secara natural di tengah/akhir kalimat — bebas memilih emoji apa pun yang paling pas dan bernyawa sesuai konteks cerita.
+- Gunakan Markdown bold secara pas untuk penekanan — jangan terlalu sering.
+- Tanpa bullet list.
+- Gunakan newline asli antar paragraf.
+- Tanpa pembats visual (---) — biarkan narasi mengalir.
+- 150-250 kata.`;
+  return callGemini(prompt, 0.5);
+};
+
+const formatWinFallback = (record) => {
+  return `🏆 *SATU BUKTI KEMENANGAN NYATA*
+
+Jika hari ini kamu merasa lelah atau berat, ingatlah satu hal ini...
+
+Pada ${record.tanggal}, kamu berhasil melalui: ${record.peristiwa}. Saat itu, kamu menulis pikiran seimbang: _${record.pikiranSeimbang}_. Emosi yang kamu kelola saat itu: ${record.emosi}. Kamu tidak menepis rasa takut, melainkan menghadapinya secara perlahan 😊.
+
+Hari ini, kamu tidak perlu membuktikan apa-apa. Kamu sudah terbukti pernah melakukannya 🤍.`;
+};
+
+const formatStatsMessage = (stats, days, aiInsight) => {
+  if (stats.total === 0) {
+    return `ℹ️ Belum ada data CBT dalam *${days} hari terakhir* di Google Sheets.`;
+  }
+  let msg = `📊 *Statistik Emosi CBT — ${days} Hari Terakhir*\n\n`;
+  msg += `📈 *Ringkasan Data*\n`;
+  msg += `• Total sesi: *${stats.total}*\n`;
+  msg += `• Emosi dominan: *${stats.dominantEmotion}* (${stats.dominantPercentage}%)\n`;
+  msg += `• Rata-rata skala emosi: *${stats.averageScale}*\n\n`;
+  msg += `📋 *Frekuensi Emosi*\n`;
+  stats.emotionFrequencies.forEach((e) => {
+    msg += `• *${e.emotion}*: ${e.count}x (${e.percentage}%)\n`;
+  });
+  msg += `\n🧠 *Clinical & Emotional Insight*\n${aiInsight}`;
+  return msg;
 };

@@ -112,7 +112,9 @@ const getHelpText = () => `🌿 *PANDUAN XENOVIA CARE (CBT BOT)*
 • \`/reframe\` - P3K Reframing Instan (Tombol topik dinamis).
 • \`/rekap minggu / bulan\` - Rekap histori CBT.
 • \`/cari <kata_kunci>\` - Cari rekam jejak.
-• \`/grounding\` - Teknik 5-4-3-2-1 Sensory Grounding (meredakan cemas instan).`;
+• \`/grounding\` - Teknik 5-4-3-2-1 Sensory Grounding (meredakan cemas instan).
+• \`/win\` - 🏆 Pesan penguatan dari catatan positifmu di masa lalu.
+• \`/stats\` - 📊 Statistik emosi & insight klinis dari data CBT-mu.`;
 
 const FALLBACK_DEEPSEEK_ERROR =
   "Maaf, sistem sedang mengalami sedikit gangguan.";

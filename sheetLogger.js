@@ -196,3 +196,82 @@ const parseDateFromSheet = (dateStr) => {
       )
     : null;
 };
+
+const getRandomWinRecord = () => {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const now = new Date();
+  const cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const allRows = ss.getSheets().flatMap((sheet) => {
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return [];
+    return data
+      .slice(1)
+      .filter((row) => {
+        const rowDate = parseDateFromSheet(row[0]);
+        return rowDate && rowDate >= cutoffDate && rowDate <= now;
+      })
+      .map((row) => ({
+        tanggal: row[0],
+        peristiwa: row[1],
+        pikiranOtomatis: row[2],
+        emosi: row[3],
+        distorsi: row[4],
+        buktiTandingan: row[5],
+        pikiranSeimbang: row[6],
+        kategori: row[7],
+      }));
+  });
+  const positiveRows = allRows.filter(
+    (r) => (r.kategori ?? "").toLowerCase() === "positif",
+  );
+  if (positiveRows.length === 0) return null;
+  return positiveRows[Math.floor(Math.random() * positiveRows.length)];
+};
+
+const getEmotionStats = (days) => {
+  const rows = getRowsLastNDays(days);
+  if (rows.length === 0)
+    return {
+      total: 0,
+      dominantEmotion: "-",
+      dominantPercentage: 0,
+      emotionFrequencies: [],
+      averageScale: 0,
+    };
+  const emotionCount = {};
+  let totalScale = 0;
+  let scaleCount = 0;
+  rows.forEach((r) => {
+    const raw = (r.emosi ?? "").toString();
+    const parts = raw.split(",");
+    parts.forEach((part) => {
+      const cleaned = part
+        .replace(/\s*\(.*?\)/g, "")
+        .replace(/\s+menurun.*/i, "")
+        .trim();
+      if (cleaned) {
+        emotionCount[cleaned] = (emotionCount[cleaned] ?? 0) + 1;
+      }
+    });
+    const scaleMatch = raw.match(/\((\d+)\)/);
+    if (scaleMatch) {
+      totalScale += parseInt(scaleMatch[1]);
+      scaleCount++;
+    }
+  });
+  const total = Object.values(emotionCount).reduce((a, b) => a + b, 0);
+  const sorted = Object.entries(emotionCount)
+    .map(([emotion, count]) => ({
+      emotion,
+      count,
+      percentage: Math.round((count / total) * 100),
+    }))
+    .sort((a, b) => b.count - a.count);
+  return {
+    total,
+    dominantEmotion: sorted[0]?.emotion ?? "-",
+    dominantPercentage: sorted[0]?.percentage ?? 0,
+    emotionFrequencies: sorted,
+    averageScale: scaleCount > 0 ? Math.round(totalScale / scaleCount) : 0,
+  };
+};

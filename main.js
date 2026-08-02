@@ -54,6 +54,22 @@ const doPost = (e) => {
         handleReframeCallback(chatId, callbackData);
         return;
       }
+
+      if (callbackData.startsWith("stats_")) {
+        const days = parseInt(callbackData.split("_")[1]) || 7;
+        sendTelegramMessage(
+          chatId,
+          "⏳ *Sedang menganalisis data emosi...* Mohon tunggu sebentar.",
+        );
+        const stats = getEmotionStats(days);
+        const freqText = stats.emotionFrequencies
+          .map((e) => `${e.emotion}: ${e.count}x (${e.percentage}%)`)
+          .join(", ");
+        const statsSummary = `Periode: ${days} hari | Total sesi: ${stats.total} | Emosi dominan: ${stats.dominantEmotion} (${stats.dominantPercentage}%) | Rata-rata skala: ${stats.averageScale} | Frekuensi: ${freqText}`;
+        const aiInsight = callGeminiForStats(statsSummary, days);
+        sendTelegramMessage(chatId, formatStatsMessage(stats, days, aiInsight));
+        return;
+      }
     }
 
     const message = data.message;
@@ -137,6 +153,41 @@ const doPost = (e) => {
 
     if (lowerText.startsWith("/reframe")) {
       handleReframeCommand(chatId);
+      return;
+    }
+
+    if (lowerText === "/win") {
+      const record = getRandomWinRecord();
+      if (!record) {
+        sendTelegramMessage(
+          chatId,
+          "ℹ️ Belum ada catatan positif dalam 30 hari terakhir di Google Sheets.",
+        );
+        return;
+      }
+      sendTelegramMessage(
+        chatId,
+        "🏆 *Mengambil catatan kemenanganmu dari jurnal...*",
+      );
+      const narrative = generateWinNarrative(record);
+      sendTelegramMessage(chatId, narrative || formatWinFallback(record));
+      return;
+    }
+
+    if (lowerText === "/stats") {
+      const keyboard = {
+        inline_keyboard: [
+          [
+            { text: "📊 Rekap Minggu (7 Hari)", callback_data: "stats_7" },
+            { text: "📅 Rekap Bulan (30 Hari)", callback_data: "stats_30" },
+          ],
+        ],
+      };
+      sendTelegramMessage(
+        chatId,
+        "📊 *Pilih Periode Statistik Emosi*\n\nSilakan pilih periode data statistik yang ingin kamu lihat:",
+        keyboard,
+      );
       return;
     }
 

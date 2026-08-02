@@ -1,0 +1,9 @@
+const SCRIPT_PROP = PropertiesService.getScriptProperties();
+
+const CONFIG = {
+  TELEGRAM_TOKEN: SCRIPT_PROP.getProperty("TELEGRAM_TOKEN"),
+  OPENROUTER_API_KEY: SCRIPT_PROP.getProperty("OPENROUTER_API_KEY"),
+  GEMINI_API_KEY: SCRIPT_PROP.getProperty("GEMINI_API_KEY"),
+  GROQ_API_KEY: SCRIPT_PROP.getProperty("GROQ_API_KEY"),
+  SPREADSHEET_ID: SCRIPT_PROP.getProperty("SPREADSHEET_ID"),
+};

@@ -8,6 +8,10 @@ const saveToSheet = (data) => {
   const sheetName = `${MONTHS_ID[now.getMonth()]} ${now.getFullYear()}`;
   let sheet = ss.getSheetByName(sheetName) ?? ss.insertSheet(sheetName);
 
+  // Ensure column widths are always correct (idempotent, runs on every save)
+  const COL_WIDTHS = [180, 280, 250, 180, 220, 280, 320, 140];
+  COL_WIDTHS.forEach((w, i) => sheet.setColumnWidth(i + 1, w));
+
   if (sheet.getLastRow() === 0) {
     sheet.setFrozenRows(1);
     sheet.appendRow([
@@ -274,4 +278,15 @@ const getEmotionStats = (days) => {
     emotionFrequencies: sorted,
     averageScale: scaleCount > 0 ? Math.round(totalScale / scaleCount) : 0,
   };
+};
+
+// Retroactive fix: set column widths on existing sheets that were created before auto-width was added
+const applyColumnWidthsToAllSheets = () => {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const COL_WIDTHS = [180, 280, 250, 180, 220, 280, 320, 140];
+  ss.getSheets().forEach((sheet) => {
+    if (sheet.getLastRow() > 0) {
+      COL_WIDTHS.forEach((w, i) => sheet.setColumnWidth(i + 1, w));
+    }
+  });
 };

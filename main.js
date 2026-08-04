@@ -50,7 +50,7 @@ const doPost = (e) => {
         return;
       }
 
-      if (callbackData.startsWith("rf_")) {
+      if (callbackData.startsWith("rf:")) {
         handleReframeCallback(chatId, callbackData);
         return;
       }

@@ -94,10 +94,10 @@ const callDeepSeek = (messages, temp = 0.4) => {
   }
 };
 
-const callGemini = (promptText, temp = 0.3) => {
+const callGemini = (promptText, temp = 0.3, opts = {}) => {
   const payload = {
     contents: [{ role: "user", parts: [{ text: promptText }] }],
-    generationConfig: { temperature: temp },
+    generationConfig: { temperature: temp, ...opts },
   };
   const response = UrlFetchApp.fetch(GEMINI_URL, {
     method: "post",

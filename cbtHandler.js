@@ -269,62 +269,152 @@ const handleReframeCommand = (chatId) => {
     return;
   }
 
-  const promptExtract = `Analisis daftar Peristiwa & Pikiran Otomatis dari jurnal emosi negatif/kecemasan pengguna (30 hari terakhir):
-${JSON.stringify(
-  negRows.map((r) => ({ peristiwa: r.peristiwa, pikiran: r.pikiranOtomatis })),
-  null,
-  2,
-)}
+  // STEP 1: Ambil 25 baris terbaru peristiwa sebagai string ringkas
+  const sampleText = negRows
+    .slice(-25)
+    .map((r) => r.peristiwa)
+    .filter(Boolean)
+    .join("\n");
 
-TUGAS UTAMA:
-Identifikasi dan kelompokkan menjadi 4 hingga 6 TOPIK/PEMICU SPESIFIK yang paling sering diulang-ulang oleh pengguna (misal: "Sensasi Lambung", "Detak Jantung", "Makan Pedas", "Deadline Kerja", "Overthinking").
+  const promptTopics = `Analisis daftar peristiwa berikut dari pengguna:\n${sampleText}\n\nEkstrak dan kelompokkan menjadi 4-5 TOPIC SPECIFIC RINGKAS (Maksimal 2-3 kata per topik).\nWAJIB beri 1 Emoji relevan di depan setiap topik.\nDILARANG menggunakan nama emosi umum seperti 'Kecemasan' atau 'Stres'.\n\nKembalikan HANYA JSON Array valid tanpa markdown:\n[{"id":"t1","label":"🤢 Sensasi Lambung","keyword":"lambung"}]`;
 
-ATURAN OUTPUT:
-Wajib HANYA mengembalikan JSON Array string berisi 4 hingga 6 topik spesifik tersebut. Setiap nama topik MAKSIMAL 2-3 kata dan beri 1 emoji pemicu di depannya.
-Contoh: ["🤢 Sensasi Lambung", "🫀 Detak Jantung", "💼 Deadline Kerja", "🧠 Overthinking"]`;
-
-  let topics = [
-    "🤢 Sensasi Lambung",
-    "🫀 Sensasi Fisik",
-    "💼 Pekerjaan & Tugas",
-    "🧠 Overthinking",
-  ];
-  const aiTopicRes = callGemini(promptExtract, 0.2);
+  const aiTopicRes = callGemini(promptTopics, 0.1, { maxOutputTokens: 150 });
+  let topics = [];
   if (aiTopicRes) {
     try {
-      const jsonMatch = aiTopicRes.match(/\[[\s\S]*?\]/);
+      // Strip markdown codeblock wrapper jika Gemini mengembalikan ```json ... ```
+      const cleaned = aiTopicRes
+        .replace(/```(?:json)?\s*/gi, "")
+        .replace(/```\s*/g, "");
+      const jsonMatch = cleaned.match(/\[[\s\S]*?\]/);
       if (jsonMatch?.[0]) {
         const parsed = JSON.parse(jsonMatch[0]);
-        if (Array.isArray(parsed) && parsed.length > 0)
-          topics = parsed.slice(0, 6);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Normalisasi: Gemini mungkin return "keyword" (string) -> konversi ke "keywords" (array)
+          topics = parsed.map((t) => ({
+            ...t,
+            keywords: t.keywords ?? (t.keyword ? [t.keyword] : []),
+          }));
+        }
       }
-    } catch (err) {
-      Logger.log(`Topic Parsing Error: ${err}`);
+    } catch (e) {
+      Logger.log(`Topic parsing error: ${e}`);
     }
   }
+  // Fallback bila Gemini gagal: keyword-based topic abstraction
+  if (topics.length === 0) {
+    const TOPIC_MAP = [
+      {
+        keywords: ["makan", "lambung", "mual", "perut", "asam", "makanan"],
+        label: "🤢 Sensasi Lambung",
+      },
+      {
+        keywords: [
+          "kerja",
+          "tugas",
+          "kantor",
+          "deadline",
+          "remote",
+          "pekerjaan",
+          "job",
+        ],
+        label: "💼 Pekerjaan & Tugas",
+      },
+      {
+        keywords: [
+          "fisik",
+          "jantung",
+          "nafas",
+          "pusing",
+          "sakit",
+          "tangan",
+          "dada",
+          "sesak",
+        ],
+        label: "🫀 Sensasi Fisik",
+      },
+      {
+        keywords: [
+          "pikiran",
+          "overthinking",
+          "berpikir",
+          "terus",
+          "membayang",
+          "khawatir",
+        ],
+        label: "🧠 Overthinking",
+      },
+      {
+        keywords: ["tidur", "bangun", "pagi", "malam", "insomnia", "terbangun"],
+        label: "🌅 Kecemasan Pagi",
+      },
+      {
+        keywords: [
+          "sosial",
+          "orang",
+          "bicara",
+          "kerumunan",
+          "sendiri",
+          "teman",
+        ],
+        label: "👥 Interaksi Sosial",
+      },
+      {
+        keywords: ["cuaca", "panas", "hujan", "lingkungan", "ruang"],
+        label: "🌊 Lingkungan",
+      },
+    ];
+    const allText = negRows
+      .map((r) => `${r.peristiwa} ${r.pikiranOtomatis}`.toLowerCase())
+      .join(" ");
+    const scored = TOPIC_MAP.map((t) => {
+      const hits = t.keywords.filter((kw) => allText.includes(kw)).length;
+      return { ...t, hits };
+    })
+      .filter((t) => t.hits > 0)
+      .sort((a, b) => b.hits - a.hits);
+    topics =
+      scored.length >= 3
+        ? scored.slice(0, 5).map((t, i) => ({
+            id: `topic_${i + 1}`,
+            label: t.label,
+            keywords: t.keywords,
+          }))
+        : (() => {
+            const freq = {};
+            negRows.forEach((r) => {
+              const p = (r.peristiwa ?? "").trim();
+              if (!p) return;
+              const words = p.split(/\s+/).slice(0, 4).join(" ");
+              const key = words.length > 20 ? words.slice(0, 20) + "…" : words;
+              freq[key] = (freq[key] || 0) + 1;
+            });
+            const EMOJIS = ["🔹", "🔸", "🟣", "🟤", "⚪"];
+            return Object.entries(freq)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 5)
+              .map(([label], i) => ({
+                id: `topic_${i + 1}`,
+                label: `${EMOJIS[i]} ${label}`,
+                keywords: [],
+              }));
+          })();
+  }
+
+  // Simpan mapping topik di cache untuk callback
+  const cache = CacheService.getUserCache();
+  cache.put(`TOPICS_${chatId}`, JSON.stringify(topics), CACHE_TTL_SECONDS);
 
   const inlineKeyboard = [];
   for (let i = 0; i < topics.length; i += 2) {
     const row = [];
-    const top1 = topics[i];
-    const cleanKw1 = top1
-      .replace(/[^\w\s]/gi, "")
-      .trim()
-      .slice(0, 15);
-    row.push({ text: top1, callback_data: `rf_tp_${cleanKw1}` });
+    row.push({ text: topics[i].label, callback_data: `rf:${i}` });
     if (i + 1 < topics.length) {
-      const top2 = topics[i + 1];
-      const cleanKw2 = top2
-        .replace(/[^\w\s]/gi, "")
-        .trim()
-        .slice(0, 15);
-      row.push({ text: top2, callback_data: `rf_tp_${cleanKw2}` });
+      row.push({ text: topics[i + 1].label, callback_data: `rf:${i + 1}` });
     }
     inlineKeyboard.push(row);
   }
-  inlineKeyboard.push([
-    { text: "🎲 Random / Acak", callback_data: "rf_random" },
-  ]);
+  inlineKeyboard.push([{ text: "🎲 Random / Acak", callback_data: "rf:rand" }]);
   sendTelegramMessage(
     chatId,
     "🌿 *P3K Reframing Instan*\n\nSilakan pilih topik atau pemicu spesifik yang ingin kamu baca saat ini:",
@@ -333,29 +423,68 @@ Contoh: ["🤢 Sensasi Lambung", "🫀 Detak Jantung", "💼 Deadline Kerja", "�
 };
 
 const handleReframeCallback = (chatId, callbackData) => {
-  const negRows = getNegativeRowsLastNDays(30);
-  if (negRows.length === 0) {
-    sendTelegramMessage(chatId, "ℹ️ Belum ada catatan reframing tersedia.");
-    return;
+  try {
+    sendTypingAction(chatId);
+    const negRows = getNegativeRowsLastNDays(30);
+    if (negRows.length === 0) {
+      sendTelegramMessage(chatId, "ℹ️ Belum ada catatan reframing tersedia.");
+      return;
+    }
+    let selectedRows = [];
+    let topicLabel = "Topik Umum";
+    const cache = CacheService.getUserCache();
+    const topicsCache = JSON.parse(cache.get(`TOPICS_${chatId}`) || "[]");
+
+    if (callbackData === "rf:rand") {
+      selectedRows = [...negRows].sort(() => 0.5 - Math.random()).slice(0, 3);
+      topicLabel = "Topik Acak";
+    } else if (callbackData.startsWith("rf:")) {
+      const idx = parseInt(callbackData.replace("rf:", ""), 10);
+      const topicObj = topicsCache[idx];
+      topicLabel = topicObj ? topicObj.label : "Topik";
+      const keywords = topicObj?.keywords || [];
+      if (keywords.length > 0) {
+        selectedRows = negRows.filter((r) => {
+          const text = `${r.peristiwa} ${r.pikiranOtomatis}`.toLowerCase();
+          return keywords.some((kw) => text.includes(kw.toLowerCase()));
+        });
+      }
+      // Fallback: jika filter kosong, ambil 3 baris acak dari 20 terbaru
+      if (selectedRows.length === 0) {
+        selectedRows = [...negRows]
+          .slice(-20)
+          .sort(() => 0.5 - Math.random())
+          .slice(0, 3);
+      } else {
+        selectedRows = selectedRows.slice(-3);
+      }
+    }
+
+    const rowsContext = selectedRows
+      .map(
+        (r, i) =>
+          `${i + 1}. Tanggal: ${r.tanggal}\n   Peristiwa: ${r.peristiwa}\n   Pikiran Otomatis: ${r.pikiranOtomatis}\n   Emosi: ${r.emosi}\n   Bukti Tandingan: ${r.buktiTandingan}\n   Pikiran Seimbang: ${r.pikiranSeimbang}`,
+      )
+      .join("\n\n");
+
+    const promptP3K = `Kamu adalah Xenovia Care. Buatkan pesan P3K Reframing berdasarkan data riwayat pengguna dari Google Sheet berikut:\n${rowsContext}\n\nATURAN FORMATTING KETAT:\n1. WAJIB TAMPILKAN SEKSI REFRAME TERPISAH: Tampilkan 1-3 Pikiran Seimbang asli milik pengguna dari sheet dalam daftar terpisah.\n2. Setiap poin Pikiran Seimbang WAJIB berada di BARIS BARU (newline) menggunakan numbering 1. "...", 2. "...". DILARANG menyatukannya ke dalam paragraf narasi!\n3. DILARANG menggunakan italic/cetak miring (* atau _).\n4. DILARANG menggunakan garis pemisah (---) atau label kaku seperti 'SEKSI 1'.\n\nSTRUKTUR RESPOIN WAJIB:\n\nHalo, aku Xenovia Care. [1 Paragraf Validasi Emosi]\n\n[1 Paragraf Grounding & Olah Napas]\n\n💡 **Pegangan Utama dari Pikiran Seimbangmu:**\n1. "[Pikiran Seimbang 1 dari sheet]"\n2. "[Pikiran Seimbang 2 dari sheet]"\n3. "[Pikiran Seimbang 3 dari sheet jika ada]"\n\n[1-2 Paragraf Rekam Jejak Bukti Nyata dari Sheet]\n\n🚀 **3 Langkah Kecil Detik Ini:**\n- [Langkah 1]\n- [Langkah 2]\n- [Langkah 3]\n\n[1 Paragraf Afirmasi Penutup Suportif ala /win]`;
+
+    let responseText;
+    const aiRes = callGemini(promptP3K, 0.3, { maxOutputTokens: 600 });
+    if (aiRes && aiRes.trim() !== "") {
+      responseText = sanitizeQuotes(aiRes);
+    } else {
+      // Fallback: simple format dari data jurnal
+      responseText = `🌿 **P3K Reframing — ${topicLabel}**\n\nIngat: sensasi yang kamu rasakan saat ini sudah pernah terjadi sebelumnya dan selalu mereda. Kamu sudah membuktikannya 🤍`;
+    }
+    sendTelegramMessage(chatId, responseText.trim());
+  } catch (e) {
+    Logger.log(`handleReframeCallback error: ${e}`);
+    sendTelegramMessage(
+      chatId,
+      "⚠️ Terjadi gangguan saat memuat reframing. Coba ketik /reframe lagi ya.",
+    );
   }
-  let selectedRows = [];
-  if (callbackData === "rf_random") {
-    selectedRows = [...negRows].sort(() => 0.5 - Math.random()).slice(0, 2);
-  } else if (callbackData.startsWith("rf_tp_")) {
-    const topicKey = callbackData.replace("rf_tp_", "").toLowerCase();
-    const matched = negRows.filter((r) => {
-      const fullText =
-        `${r.peristiwa} ${r.pikiranOtomatis} ${r.buktiTandingan}`.toLowerCase();
-      const words = topicKey.split(/\s+/).filter((w) => w.length > 2);
-      return words.some((w) => fullText.includes(w));
-    });
-    selectedRows = matched.length > 0 ? matched.slice(-3) : negRows.slice(-2);
-  }
-  let messageText = `💡 *Reframing Masa Lalu*\n\n`;
-  selectedRows.forEach((r) => {
-    messageText += `• *${r.pikiranSeimbang}*\n\n`;
-  });
-  sendTelegramMessage(chatId, messageText.trim());
 };
 
 const generateWinNarrative = (record) => {

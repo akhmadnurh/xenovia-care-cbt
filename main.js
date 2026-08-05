@@ -34,6 +34,7 @@ const doPost = (e) => {
         if (pendingDataJson) {
           const cbtData = JSON.parse(pendingDataJson);
           saveToSheet(cbtData);
+          saveToFirebase(cbtData);
           cache.remove(`PENDING_CBT_${chatId}`);
           cache.remove(`HISTORY_${chatId}`);
           cache.remove(`MODE_${chatId}`);
@@ -103,6 +104,7 @@ const doPost = (e) => {
     ) {
       const cbtData = JSON.parse(pendingCbt);
       saveToSheet(cbtData);
+      saveToFirebase(cbtData);
       const cache = CacheService.getUserCache();
       cache.remove(`PENDING_CBT_${chatId}`);
       cache.remove(`HISTORY_${chatId}`);

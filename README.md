@@ -1,11 +1,12 @@
 # 🌿 Xenovia Care — CBT Companion Bot
 
-> **Teman pendamping terapi CBT berbasis AI** — Bot Telegram interaktif untuk jurnal emosi, reframing kognitif, pelacakan kesehatan mental harian, dan grounding sensorik. Terintegrasi langsung dengan Google Sheets sebagai basis data.
+> **Teman pendamping terapi CBT berbasis AI** — Bot Telegram interaktif untuk jurnal emosi, reframing kognitif, pelacakan kesehatan mental harian, dan grounding sensorik. Google Sheets berperan sebagai **Master Data Store (SSOT) & Visual Backup**, dipercepat oleh **Firebase Realtime Database** sebagai caching/speed layer untuk operasi baca.
 
 [![Google Apps Script](https://img.shields.io/badge/Google_Apps_Script-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://script.google.com/)
 [![Telegram Bot](https://img.shields.io/badge/Telegram_Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/bots/api)
 [![DeepSeek AI](https://img.shields.io/badge/DeepSeek_AI-6366F1?style=for-the-badge&logo=openai&logoColor=white)](https://platform.deepseek.com/)
 [![Google Sheets](https://img.shields.io/badge/Google_Sheets-0F9D58?style=for-the-badge&logo=google-sheets&logoColor=white)](https://sheets.google.com/)
+[![Firebase](https://img.shields.io/badge/Firebase_Realtime_DB-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com/)
 [![Groq](https://img.shields.io/badge/Groq-7700FF?style=for-the-badge&logo=openai&logoColor=white)](https://groq.com/)
 
 ---
@@ -37,7 +38,9 @@
 | **AI Engine (Stats/Grounding)** | Google Gemini 3.5 Flash Lite |
 | **Speech-to-Text** | Groq Whisper (Audio Transcription) |
 | **Platform Interface** | Telegram Bot API (Webhook via Apps Script) |
-| **Database & Storage** | Google Sheets API v4 |
+| **Database & Storage (Master)** | Google Sheets API v4 — SSOT & Visual Backup |
+| **Database (Caching/Speed Layer)** | Firebase Realtime Database (REST API + Database Secret) |
+| **Session Cache (Ephemeral)** | `CacheService` & `PropertiesService` (Chat CBT, Grounding, Reframe) |
 | **Deployment** | CLASP (Command Line Apps Script) |
 | **Timezone** | Asia/Jakarta (WIB) |
 
@@ -48,7 +51,37 @@
 - **OpenRouter API Key** — daftar di [openrouter.ai](https://openrouter.ai/)
 - **Google Gemini API Key** — daftar di [aistudio.google.com](https://aistudio.google.com/)
 - **Groq API Key** — daftar di [groq.com](https://groq.com/)
+- **Firebase Project** — Realtime Database (mode test/locked) dengan **Legacy Database Secret** diaktifkan
 - **CLASP CLI** — `npm install -g @google/clasp`
+
+---
+
+## 🏗️ Arsitektur System / Flow Data
+
+Xenovia Care memakai pola **dual-layer storage**: Google Sheets sebagai sumber kebenaran, Firebase Realtime Database sebagai lapisan akselerasi.
+
+```mermaid
+graph LR
+    TG["Telegram User"] -->|"doPost / Webhook"| GAS["Apps Script Bot"]
+    GAS -->|"simpan + baca"| SS["Google Sheets<br/>Master Data Store (SSOT)<br/>Visual Backup"]
+    GAS -->|"tulis paralel + sync berkala"| FB["Firebase Realtime DB<br/>/jurnal.json - Cache Layer"]
+    GAS -->|"CacheService / PropertiesService"| EP["Ephemeral Session Cache<br/>Chat CBT, Grounding, Reframe"]
+    FB -->|"baca cepat"| GAS
+```
+
+| Layer | Peran | Contoh Penggunaan |
+|:------|:------|:------------------|
+| **Google Sheets** | Master Data Store (SSOT) & Visual Backup — data mentah per tab bulanan (contoh: `Juli 2026`, `Agustus 2026`) | Semua data jurnal permanen, arsip, edit manual |
+| **Firebase Realtime DB** | Caching/Speed Layer via REST API — satu koleksi datar di node `/jurnal.json` | Operasi baca kencang: `/win`, `/cari`, `/stats`, `/rekap` (Firebase-first, fallback ke Sheet) |
+| **CacheService / PropertiesService** | Ephemeral session cache — tidak menyentuh Firebase | Chat CBT interaktif (DeepSeek), Grounding 5-4-3-2-1, state Reframe |
+
+**Alur Data:**
+
+1. **Tulis** — setiap catatan CBT baru disimpan ke **Google Sheets** (SSOT) dan **paralel** ke Firebase via `saveToFirebase()` (POST).
+2. **Baca** — operasi `/win`, `/cari`, `/stats`, `/rekap` membaca dari Firebase terlebih dahulu (`getLatestRowsFromFirebase` / `searchFirebase`); bila Firebase belum dikonfigurasi/kosong, otomatis fallback membaca Google Sheets.
+3. **Sync berkala** — `keepWarm()` (time-driven trigger) menjalankan **Smart Sync** untuk menyatukan seluruh tab jurnal bulanan ke Firebase.
+
+> Sesi chat interaktif (DeepSeek CBT, Grounding 5-4-3-2-1, Reframe) sengaja **tidak** memakai Firebase — cukup `CacheService`/`PropertiesService` yang ephemeral demi efisiensi dan kecepatan respons.
 
 ---
 
@@ -81,9 +114,11 @@ clasp login
   "filePushOrder": [
     "config.js",
     "services.js",
+    "firebaseService.js",
     "sheetLogger.js",
     "cbtHandler.js",
     "groundingHandler.js",
+    "cron.js",
     "main.js"
   ],
   "ignore": [
@@ -108,7 +143,16 @@ clasp login
    ```
 6. **Share Spreadsheet** ke email Service Account dengan permission **Editor**
 
-### 4. Konfigurasi Script Properties
+### 4. Setup Firebase Realtime Database (Caching Layer)
+
+1. Buka [Firebase Console](https://console.firebase.google.com/) → buat project baru (atau pakai project existing)
+2. **Build** → **Realtime Database** → **Create Database** → pilih region (misal `asia-southeast1`)
+3. Atur mode **test mode** (atau locked) lalu aktifkan **Legacy Database Secrets**:
+   - *Project Settings* → tab *Service accounts* → bagian *Database Secrets*
+   - Klik **Show** untuk menampilkan secret → salin nilainya
+4. Salin **Database URL** dari halaman Realtime Database (contoh: `https://<project-id>-default-rtdb.asia-southeast1.firebasedatabase.app`)
+
+### 5. Konfigurasi Script Properties
 
 Buka **Google Apps Script Editor** (`clasp open`) → tab **Project Settings** → **Script Properties** → Tambahkan:
 
@@ -119,9 +163,13 @@ Buka **Google Apps Script Editor** (`clasp open`) → tab **Project Settings** �
 | `GEMINI_API_KEY` | API Key Google Gemini |
 | `GROQ_API_KEY` | API Key Groq (untuk Whisper) |
 | `SPREADSHEET_ID` | ID Google Spreadsheet |
+| `FIREBASE_URL` | URL Firebase Realtime Database (contoh: `https://<project-id>-default-rtdb.asia-southeast1.firebasedatabase.app`) |
+| `FIREBASE_SECRET` | Legacy Database Secret dari Firebase Console (Project Settings → Service Accounts → Database Secrets) |
 | `USER_CHAT_ID` | *(Opsional)* Chat ID Telegram kamu (auto-set saat pertama kali interaksi) |
 
-### 5. Deploy Bot
+> ⚠️ **Catatan:** `FIREBASE_URL` & `FIREBASE_SECRET` bersifat wajib untuk mengaktifkan caching layer. Tanpa keduanya, bot tetap berfungsi penuh (membaca langsung dari Google Sheets) — `firebaseAvailable()` akan bernilai `false`.
+
+### 6. Deploy Bot
 
 ```bash
 # Push kode ke Google Apps Script
@@ -140,7 +188,7 @@ Setelah deploy, set webhook Telegram:
 https://api.telegram.org/bot<TOKEN>/setWebhook?url=<YOUR_APPS_SCRIPT_WEB_APP_URL>
 ```
 
-### 6. Jalankan (Development)
+### 7. Jalankan (Development)
 
 ```bash
 # Push perubahan terbaru
@@ -150,7 +198,7 @@ clasp push
 clasp open
 ```
 
-### 7. Setup Daily Trigger — Anchor Otomatis (05:00 WIB)
+### 8. Setup Daily Trigger — Anchor Otomatis (05:00 WIB)
 
 Untuk menjalankan pesan harian `/anchor` secara otomatis setiap pagi, buat **time-driven trigger** langsung dari UI Google Apps Script:
 
@@ -174,6 +222,45 @@ Untuk menjalankan pesan harian `/anchor` secara otomatis setiap pagi, buat **tim
 > - Fungsi `sendDailyAnchor()` akan mengambil `USER_CHAT_ID` dari Script Properties dan mengirim pesan anchor harian ke chat tersebut.
 > - Pastikan kamu pernah berinteraksi dengan bot minimal sekali agar `USER_CHAT_ID` otomatis tersimpan.
 > - Pesan anchor juga ditulis ke **Cell A1** tab **"Anchor"** di Google Sheets (berguna untuk integrasi KWGT).
+
+### 9. Setup Keep-Warm & Smart Sync Firebase
+
+Firebase diisi dan dijaga sinkronnya oleh `keepWarm()` — fungsi yang dipasang pada **time-driven trigger** interval 5–10 menit:
+
+1. Buka **Apps Script Editor** → ikon 🔔 **Triggers** → **+ Add Trigger**
+2. Konfigurasikan:
+
+| Field | Nilai |
+|:------|:------|
+| **Choose which function to run** | `keepWarm` |
+| **Choose which deployment should run** | `Head` |
+| **Select event source** | `Time-driven` |
+| **Select type of time based trigger** | `Minutes timer` |
+| **Select minute interval** | `Every 5 minutes` |
+
+3. Klik **Save** → berikan **izin otorisasi Google** jika diminta
+
+**Logika Smart Sync** (`checkAndSyncFirebase()`) — sync ke Firebase hanya terjadi jika salah satu kondisi terpenuhi:
+
+1. **Pertama kali jalan** — `LAST_FIREBASE_SYNC` belum pernah diset.
+2. **Selisih waktu > 12 jam** sejak sync terakhir.
+3. **Jumlah total baris berubah** — `getLastRow()` diakumulasi dari **seluruh tab jurnal bulanan** dan dibandingkan dengan `LAST_ROW_COUNT`; penambahan/pengurangan baris di tab manapun memicu sync ulang.
+
+**Proses Sync** (`syncAllSheetToFirebase()`):
+
+- Membaca **semua sheet** dari spreadsheet, lalu **memfilter** hanya tab jurnal bulanan — nama tab mengandung bulan Indonesia (misal `Juli 2026`) dan **bukan** tab `Widget_`/non-jurnal (misal `Widget_Anchor`).
+- Hanya tab dalam **rentang 2 tahun terakhir** (tahun pada nama tab ≥ tahun berjalan − 2) yang diikutsertakan — data lama tetap aman di Sheet sebagai arsip, dan Firebase tidak membesar tanpa batas.
+- Seluruh baris dari semua tab bulanan digabung menjadi **satu objek JSON datar** dengan key unik berbasis timestamp (`entry_<timestamp>`), lalu di-`PUT` ke node `/jurnal.json`.
+
+### 10. Migrasi Awal (Inisialisasi Data Historis)
+
+Jalankan **sekali** secara manual dari Apps Script Editor untuk mengisi Firebase dengan seluruh data jurnal historis:
+
+1. Buka **Apps Script Editor** → pilih fungsi `syncAllSheetToFirebase` pada dropdown
+2. Klik **Run** → berikan izin otorisasi jika diminta
+3. Cek hasilnya di Firebase Console → Realtime Database → node `/jurnal`
+
+> Alternatif: biarkan `keepWarm()` menjalankan sync otomatis — pada pemanggilan pertama `LAST_FIREBASE_SYNC` masih kosong sehingga sync langsung dieksekusi.
 
 ---
 
@@ -241,9 +328,11 @@ xenovia-care-cbt/
 ├── appsscript.json      # Konfigurasi Google Apps Script (timezone, runtime V8)
 ├── config.js            # Konstanta & konfigurasi (API keys, prompt, grounding steps)
 ├── services.js          # Layer API (Telegram, DeepSeek/OpenRouter, Gemini, Groq Whisper)
+├── firebaseService.js   # Layer Firebase Realtime DB (caching/speed layer: save, sync, getLatest, search, keepWarm helpers)
 ├── sheetLogger.js       # Operasi Google Sheets (simpan data, rekap, statistik, cari)
 ├── cbtHandler.js        # Mesin CBT (jurnal interaktif, reframing, anchor, win)
 ├── groundingHandler.js  # Handler teknik grounding 5-4-3-2-1
+├── cron.js              # keepWarm() & Smart Sync otomatis (time-driven trigger)
 ├── main.js              # Entry point webhook (doPost) & routing command
 ├── package.json         # Metadata project & script deploy
 └── README.md            # Dokumentasi project ini

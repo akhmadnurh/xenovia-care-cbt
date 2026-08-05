@@ -63,10 +63,36 @@ const saveToSheet = (data) => {
   sheet.getRange(sheet.getLastRow(), 1, 1, 8).setWrap(true);
 };
 
+// Row shape helper — normalisasi dari array Sheet atau object Firebase
+const toRowObject = (row) => ({
+  tanggal: row.tanggal ?? row[0] ?? "",
+  peristiwa: row.peristiwa ?? row[1] ?? "",
+  pikiranOtomatis: row.pikiranOtomatis ?? row[2] ?? "",
+  emosi: row.emosi ?? row[3] ?? "",
+  distorsi: row.distorsi ?? row[4] ?? "",
+  buktiTandingan: row.buktiTandingan ?? row[5] ?? "",
+  pikiranSeimbang: row.pikiranSeimbang ?? row[6] ?? "",
+  kategori: row.kategori ?? row[7] ?? "",
+});
+
+// Primary: Firebase. Fallback: Google Sheet (bila Firebase belum dikonfigurasi).
 const getRowsLastNDays = (daysLimit = 30) => {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const now = new Date();
   const cutoffDate = new Date(now.getTime() - daysLimit * 24 * 60 * 60 * 1000);
+
+  const fbRows = getLatestRowsFromFirebase(1000);
+  if (fbRows.length > 0) {
+    return fbRows
+      .filter((row) => {
+        const rowDate = row.timestamp_ms
+          ? new Date(row.timestamp_ms)
+          : parseDateFromSheet(row.tanggal);
+        return rowDate && rowDate >= cutoffDate && rowDate <= now;
+      })
+      .map(toRowObject);
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   return ss.getSheets().flatMap((sheet) => {
     const data = sheet.getDataRange().getValues();
     if (data.length <= 1) return [];
@@ -76,16 +102,7 @@ const getRowsLastNDays = (daysLimit = 30) => {
         const rowDate = parseDateFromSheet(row[0]);
         return rowDate && rowDate >= cutoffDate && rowDate <= now;
       })
-      .map((row) => ({
-        tanggal: row[0],
-        peristiwa: row[1],
-        pikiranOtomatis: row[2],
-        emosi: row[3],
-        distorsi: row[4],
-        buktiTandingan: row[5],
-        pikiranSeimbang: row[6],
-        kategori: row[7],
-      }));
+      .map(toRowObject);
   });
 };
 
@@ -135,33 +152,29 @@ const handleCari = (userMessage) => {
   const query = userMessage.replace("/cari", "").trim();
   if (!query)
     return "⚠️ Mohon sertakan kata kunci pencarian.\n*Contoh:* `/cari lambung` atau `/cari cemas rapat`";
-  const keywords = query.toLowerCase().split(/\s+/);
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheets = ss.getSheets();
-  const now = new Date();
-  const cutoffDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
 
-  const matchedRows = sheets.flatMap((sheet) => {
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return [];
-    return data
-      .slice(1)
-      .filter((row) => {
-        const rowDate = parseDateFromSheet(row[0]);
-        if (!rowDate || rowDate < cutoffDate) return false;
-        return keywords.every((kw) => row.join(" ").toLowerCase().includes(kw));
-      })
-      .map((row) => ({
-        tanggal: row[0],
-        peristiwa: row[1],
-        pikiranOtomatis: row[2],
-        emosi: row[3],
-        distorsi: row[4],
-        buktiTandingan: row[5],
-        pikiranSeimbang: row[6],
-        kategori: row[7],
-      }));
-  });
+  // Primary: Firebase. Fallback: Google Sheet (bila Firebase belum dikonfigurasi).
+  let matchedRows = searchFirebase(query);
+  if (matchedRows.length === 0) {
+    const keywords = query.toLowerCase().split(/\s+/);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const now = new Date();
+    const cutoffDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+    matchedRows = ss.getSheets().flatMap((sheet) => {
+      const data = sheet.getDataRange().getValues();
+      if (data.length <= 1) return [];
+      return data
+        .slice(1)
+        .filter((row) => {
+          const rowDate = parseDateFromSheet(row[0]);
+          if (!rowDate || rowDate < cutoffDate) return false;
+          return keywords.every((kw) =>
+            row.join(" ").toLowerCase().includes(kw),
+          );
+        })
+        .map(toRowObject);
+    });
+  }
 
   if (matchedRows.length === 0)
     return `ℹ️ Tidak ditemukan catatan CBT terkait *"${query}"* dalam 1 tahun terakhir di Google Sheets.`;
@@ -202,30 +215,7 @@ const parseDateFromSheet = (dateStr) => {
 };
 
 const getRandomWinRecord = () => {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const now = new Date();
-  const cutoffDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const allRows = ss.getSheets().flatMap((sheet) => {
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return [];
-    return data
-      .slice(1)
-      .filter((row) => {
-        const rowDate = parseDateFromSheet(row[0]);
-        return rowDate && rowDate >= cutoffDate && rowDate <= now;
-      })
-      .map((row) => ({
-        tanggal: row[0],
-        peristiwa: row[1],
-        pikiranOtomatis: row[2],
-        emosi: row[3],
-        distorsi: row[4],
-        buktiTandingan: row[5],
-        pikiranSeimbang: row[6],
-        kategori: row[7],
-      }));
-  });
-  const positiveRows = allRows.filter(
+  const positiveRows = getRowsLastNDays(30).filter(
     (r) => (r.kategori ?? "").toLowerCase() === "positif",
   );
   if (positiveRows.length === 0) return null;

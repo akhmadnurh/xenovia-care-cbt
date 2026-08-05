@@ -165,6 +165,7 @@ Buka **Google Apps Script Editor** (`clasp open`) → tab **Project Settings** �
 | `SPREADSHEET_ID` | ID Google Spreadsheet |
 | `FIREBASE_URL` | URL Firebase Realtime Database (contoh: `https://<project-id>-default-rtdb.asia-southeast1.firebasedatabase.app`) |
 | `FIREBASE_SECRET` | Legacy Database Secret dari Firebase Console (Project Settings → Service Accounts → Database Secrets) |
+| `GIF_BREATHING_URL` | *(Opsional)* URL Direct Raw animasi Box Breathing (contoh: `https://raw.githubusercontent.com/.../box-breathing.gif`) atau Telegram `file_id`. Bila kosong, bot memakai GIF fallback bawaan |
 | `USER_CHAT_ID` | *(Opsional)* Chat ID Telegram kamu (auto-set saat pertama kali interaksi) |
 
 > ⚠️ **Catatan:** `FIREBASE_URL` & `FIREBASE_SECRET` bersifat wajib untuk mengaktifkan caching layer. Tanpa keduanya, bot tetap berfungsi penuh (membaca langsung dari Google Sheets) — `firebaseAvailable()` akan bernilai `false`.
@@ -311,6 +312,7 @@ $tc(reg, tc(reg, wg("https://docs.google.com/spreadsheets/d/e/{PUBLISHED_SHEET_I
 | `/reset` | 🔄 Reset sesi | Menghapus semua cache & state sesi aktif |
 | `/reframe` | 🚑 Reframing instan | P3K untuk momen darurat kepanikan/overthinking |
 | `/grounding` | 🌿 Grounding 5-4-3-2-1 | Latihan sensorik interaktif untuk mengatasi panik |
+| `/breathing` | 🫁 Box Breathing (4-4-4-4) | Panduan visual *Box Breathing* menggunakan animasi GIF untuk regulasi napas & relaksasi instan saat cemas fisik (psikosomatis) |
 | `/win` | 🏆 Kemenangan harian | Pengingat naratif pencapaian dari data jurnal |
 | `/stats` | 📊 Statistik emosi | Analisis distribusi emosi mingguan/bulanan + insight AI |
 | `/rekap <periode>` | 📋 Rekap perkembangan | Rangkuman tren CBT (`/rekap minggu` atau `/rekap bulan`) |
@@ -332,9 +334,11 @@ xenovia-care-cbt/
 ├── sheetLogger.js       # Operasi Google Sheets (simpan data, rekap, statistik, cari)
 ├── cbtHandler.js        # Mesin CBT (jurnal interaktif, reframing, anchor, win)
 ├── groundingHandler.js  # Handler teknik grounding 5-4-3-2-1
+├── breathingHandler.js  # Handler latihan napas Box Breathing (/breathing)
 ├── cron.js              # keepWarm() & Smart Sync otomatis (time-driven trigger)
 ├── main.js              # Entry point webhook (doPost) & routing command
 ├── package.json         # Metadata project & script deploy
+├── assets/              # File media statis (misal: box-breathing.gif untuk /breathing)
 └── README.md            # Dokumentasi project ini
 ```
 

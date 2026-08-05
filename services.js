@@ -28,6 +28,21 @@ const sendTelegramMessage = (chatId, text, replyMarkup = null) => {
   return JSON.parse(resp.getContentText());
 };
 
+const sendTelegramAnimation = (chatId, animationUrl, caption) => {
+  const payload = {
+    chat_id: chatId,
+    animation: animationUrl,
+    caption,
+    parse_mode: "Markdown",
+  };
+  const resp = UrlFetchApp.fetch(`${TELEGRAM_BASE_URL}/sendAnimation`, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+  });
+  return JSON.parse(resp.getContentText());
+};
+
 const answerCallbackQuery = (callbackQueryId) => {
   UrlFetchApp.fetch(TELEGRAM_ANSWER_CALLBACK_URL, {
     method: "post",

@@ -203,6 +203,11 @@ const doPost = (e) => {
       return;
     }
 
+    if (cleanText === "/breathing") {
+      handleBreathing(chatId);
+      return;
+    }
+
     // Grounding state bypass — route to Gemini, bypass DeepSeek CBT engine
     const props = PropertiesService.getUserProperties();
     const groundingState = props.getProperty(`GROUNDING_STATE_${chatId}`);

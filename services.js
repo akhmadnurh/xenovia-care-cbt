@@ -2,15 +2,46 @@
 // services.js — TELEGRAM & EXTERNAL API CLIENTS
 // ====================================================
 
+// --- Resilience: Universal fetch wrapper with retry ---
+
+const fetchWithRetry = (url, options = {}, maxRetries = 3, delayMs = 1000) => {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const resp = UrlFetchApp.fetch(url, {
+        ...options,
+        muteHttpExceptions: true,
+      });
+      const code = resp.getResponseCode();
+      if (code === 429 || (code >= 500 && code < 600)) {
+        lastError = new Error(`HTTP ${code} from ${url}`);
+        if (attempt < maxRetries) {
+          Utilities.sleep(delayMs * attempt);
+          continue;
+        }
+      }
+      return resp;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        Utilities.sleep(delayMs * attempt);
+        continue;
+      }
+    }
+  }
+  throw new Error(
+    `fetchWithRetry failed after ${maxRetries} attempts: ${lastError}`,
+  );
+};
+
 // --- Telegram API ---
 
 const sendTypingAction = (chatId) => {
   try {
-    UrlFetchApp.fetch(`${TELEGRAM_BASE_URL}/sendChatAction`, {
+    fetchWithRetry(`${TELEGRAM_BASE_URL}/sendChatAction`, {
       method: "post",
       contentType: "application/json",
       payload: JSON.stringify({ chat_id: chatId, action: "typing" }),
-      muteHttpExceptions: true,
     });
   } catch (err) {
     Logger.log(`sendTypingAction error: ${err}`);
@@ -18,71 +49,96 @@ const sendTypingAction = (chatId) => {
 };
 
 const sendTelegramMessage = (chatId, text, replyMarkup = null) => {
-  const payload = { chat_id: chatId, text, parse_mode: "Markdown" };
-  if (replyMarkup) payload.reply_markup = replyMarkup;
-  const resp = UrlFetchApp.fetch(TELEGRAM_SEND_MESSAGE_URL, {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(payload),
-  });
-  return JSON.parse(resp.getContentText());
+  try {
+    const payload = { chat_id: chatId, text, parse_mode: "Markdown" };
+    if (replyMarkup) payload.reply_markup = replyMarkup;
+    const resp = fetchWithRetry(TELEGRAM_SEND_MESSAGE_URL, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(payload),
+    });
+    return JSON.parse(resp.getContentText());
+  } catch (err) {
+    Logger.log(`sendTelegramMessage error: ${err}`);
+    return { ok: false };
+  }
 };
 
 const sendTelegramAnimation = (chatId, animationUrl, caption) => {
-  const payload = {
-    chat_id: chatId,
-    animation: animationUrl,
-    caption,
-    parse_mode: "Markdown",
-  };
-  const resp = UrlFetchApp.fetch(`${TELEGRAM_BASE_URL}/sendAnimation`, {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(payload),
-  });
-  return JSON.parse(resp.getContentText());
+  try {
+    const payload = {
+      chat_id: chatId,
+      animation: animationUrl,
+      caption,
+      parse_mode: "Markdown",
+    };
+    const resp = fetchWithRetry(`${TELEGRAM_BASE_URL}/sendAnimation`, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(payload),
+    });
+    return JSON.parse(resp.getContentText());
+  } catch (err) {
+    Logger.log(`sendTelegramAnimation error: ${err}`);
+    return { ok: false };
+  }
 };
 
-const answerCallbackQuery = (callbackQueryId) => {
-  UrlFetchApp.fetch(TELEGRAM_ANSWER_CALLBACK_URL, {
-    method: "post",
-    contentType: "application/json",
-    muteHttpExceptions: true,
-    payload: JSON.stringify({ callback_query_id: callbackQueryId }),
-  });
+const answerCallbackQuery = (callbackQueryId, text = "") => {
+  try {
+    const payload = { callback_query_id: callbackQueryId };
+    if (text) payload.text = text;
+    fetchWithRetry(TELEGRAM_ANSWER_CALLBACK_URL, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(payload),
+    });
+  } catch (err) {
+    Logger.log(`answerCallbackQuery error: ${err}`);
+  }
 };
 
 const pinTelegramMessage = (chatId, messageId) => {
-  UrlFetchApp.fetch(`${TELEGRAM_BASE_URL}/pinChatMessage`, {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify({
-      chat_id: chatId,
-      message_id: messageId,
-      disable_notification: true,
-    }),
-    muteHttpExceptions: true,
-  });
+  try {
+    fetchWithRetry(`${TELEGRAM_BASE_URL}/pinChatMessage`, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        disable_notification: true,
+      }),
+    });
+  } catch (err) {
+    Logger.log(`pinTelegramMessage error: ${err}`);
+  }
 };
 
 const unpinAllTelegramMessages = (chatId) => {
-  UrlFetchApp.fetch(`${TELEGRAM_BASE_URL}/unpinAllChatMessages`, {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify({ chat_id: chatId }),
-    muteHttpExceptions: true,
-  });
+  try {
+    fetchWithRetry(`${TELEGRAM_BASE_URL}/unpinAllChatMessages`, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify({ chat_id: chatId }),
+    });
+  } catch (err) {
+    Logger.log(`unpinAllTelegramMessages error: ${err}`);
+  }
 };
 
 const getTelegramFileUrl = (fileId) => {
-  const response = UrlFetchApp.fetch(
-    `${TELEGRAM_BASE_URL}/getFile?file_id=${fileId}`,
-    { muteHttpExceptions: true },
-  );
-  const json = JSON.parse(response.getContentText());
-  return json.ok && json.result?.file_path
-    ? `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_TOKEN}/${json.result.file_path}`
-    : null;
+  try {
+    const response = fetchWithRetry(
+      `${TELEGRAM_BASE_URL}/getFile?file_id=${fileId}`,
+    );
+    const json = JSON.parse(response.getContentText());
+    return json.ok && json.result?.file_path
+      ? `https://api.telegram.org/file/bot${CONFIG.TELEGRAM_TOKEN}/${json.result.file_path}`
+      : null;
+  } catch (err) {
+    Logger.log(`getTelegramFileUrl error: ${err}`);
+    return null;
+  }
 };
 
 // --- External AI API Clients ---
@@ -95,12 +151,11 @@ const callDeepSeek = (messages, temp = 0.4) => {
       temperature: temp,
       provider: { order: ["DeepInfra"], allow_fallbacks: true },
     };
-    const response = UrlFetchApp.fetch(OPENROUTER_CHAT_URL, {
+    const response = fetchWithRetry(OPENROUTER_CHAT_URL, {
       method: "post",
       contentType: "application/json",
       headers: { Authorization: `Bearer ${CONFIG.OPENROUTER_API_KEY}` },
       payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
     });
     const json = JSON.parse(response.getContentText());
     return json.choices?.[0]?.message?.content ?? FALLBACK_DEEPSEEK_ERROR;
@@ -110,20 +165,24 @@ const callDeepSeek = (messages, temp = 0.4) => {
 };
 
 const callGemini = (promptText, temp = 0.3, opts = {}) => {
-  const payload = {
-    contents: [{ role: "user", parts: [{ text: promptText }] }],
-    generationConfig: { temperature: temp, ...opts },
-  };
-  const response = UrlFetchApp.fetch(GEMINI_URL, {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-  });
-  return (
-    JSON.parse(response.getContentText()).candidates?.[0]?.content?.parts?.[0]
-      ?.text ?? ""
-  );
+  try {
+    const payload = {
+      contents: [{ role: "user", parts: [{ text: promptText }] }],
+      generationConfig: { temperature: temp, ...opts },
+    };
+    const response = fetchWithRetry(GEMINI_URL, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(payload),
+    });
+    return (
+      JSON.parse(response.getContentText()).candidates?.[0]?.content?.parts?.[0]
+        ?.text ?? ""
+    );
+  } catch (err) {
+    Logger.log(`callGemini error: ${err}`);
+    return "";
+  }
 };
 
 const callGeminiForStats = (statsSummary, days) => {
@@ -152,10 +211,8 @@ FORMAT:
 
 const transcribeAudioGroq = (fileUrl) => {
   try {
-    const audioBlob = UrlFetchApp.fetch(fileUrl, { muteHttpExceptions: true })
-      .getBlob()
-      .setName("voice.ogg");
-    const response = UrlFetchApp.fetch(GROQ_WHISPER_URL, {
+    const audioBlob = fetchWithRetry(fileUrl).getBlob().setName("voice.ogg");
+    const response = fetchWithRetry(GROQ_WHISPER_URL, {
       method: "post",
       headers: { Authorization: `Bearer ${CONFIG.GROQ_API_KEY}` },
       payload: {
@@ -164,7 +221,6 @@ const transcribeAudioGroq = (fileUrl) => {
         language: "id",
         temperature: "0",
       },
-      muteHttpExceptions: true,
     });
     return JSON.parse(response.getContentText()).text ?? "";
   } catch (err) {

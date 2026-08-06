@@ -57,11 +57,10 @@ const saveToFirebase = (cbtData) => {
       timestamp_ms: Date.now(),
     };
 
-    UrlFetchApp.fetch(`${url}/jurnal.json?auth=${secret}`, {
+    fetchWithRetry(`${url}/jurnal.json?auth=${secret}`, {
       method: "post",
       contentType: "application/json",
       payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
     });
   } catch (e) {
     Logger.log(`Firebase Save Error: ${e}`);
@@ -111,11 +110,10 @@ const syncAllSheetToFirebase = () => {
       });
     });
 
-    UrlFetchApp.fetch(`${url}/jurnal.json?auth=${secret}`, {
+    fetchWithRetry(`${url}/jurnal.json?auth=${secret}`, {
       method: "put",
       contentType: "application/json",
       payload: JSON.stringify(payload),
-      muteHttpExceptions: true,
     });
   } catch (e) {
     Logger.log(`Firebase Sync Error: ${e}`);
@@ -128,7 +126,7 @@ const getLatestRowsFromFirebase = (limit = 30) => {
   try {
     const { url, secret } = getFirebaseConfig();
     const endpoint = `${url}/jurnal.json?orderBy="$key"&limitToLast=${limit}&auth=${secret}`;
-    const res = UrlFetchApp.fetch(endpoint, { muteHttpExceptions: true });
+    const res = fetchWithRetry(endpoint);
     if (res.getResponseCode() === 200) {
       const data = JSON.parse(res.getContentText());
       if (!data || typeof data !== "object") return [];
@@ -148,7 +146,7 @@ const searchFirebase = (query) => {
   try {
     const { url, secret } = getFirebaseConfig();
     const endpoint = `${url}/jurnal.json?auth=${secret}`;
-    const res = UrlFetchApp.fetch(endpoint, { muteHttpExceptions: true });
+    const res = fetchWithRetry(endpoint);
     if (res.getResponseCode() === 200) {
       const data = JSON.parse(res.getContentText());
       if (!data || typeof data !== "object") return [];

@@ -16,9 +16,10 @@ const doPost = (e) => {
         "USER_CHAT_ID",
         String(chatId),
       );
-      answerCallbackQuery(callbackId);
+      answerCallbackQuery(callbackId, "Memproses...");
 
       if (["rekap_minggu", "rekap_bulan"].includes(callbackData)) {
+        sendTypingAction(chatId);
         sendTelegramMessage(
           chatId,
           "⏳ *Sedang menganalisis data CBT...* Mohon tunggu sebentar.",
@@ -29,6 +30,7 @@ const doPost = (e) => {
       }
 
       if (callbackData === "save_cbt_confirm") {
+        sendTypingAction(chatId);
         const cache = CacheService.getUserCache();
         const pendingDataJson = cache.get(`PENDING_CBT_${chatId}`);
         if (pendingDataJson) {
@@ -57,6 +59,7 @@ const doPost = (e) => {
       }
 
       if (callbackData.startsWith("stats_")) {
+        sendTypingAction(chatId);
         const days = parseInt(callbackData.split("_")[1]) || 7;
         sendTelegramMessage(
           chatId,
@@ -304,6 +307,19 @@ const doPost = (e) => {
     }
   } catch (err) {
     Logger.log(`Error in doPost: ${err}`);
+    try {
+      const data = JSON.parse(e.postData.contents);
+      const chatId =
+        data.callback_query?.message?.chat?.id || data.message?.chat?.id;
+      if (chatId) {
+        sendTelegramMessage(
+          chatId,
+          "⚠️ Sistem sedang mengalami kendala jaringan singkat, tetapi catatanmu tetap aman. Silakan coba beberapa saat lagi.",
+        );
+      }
+    } catch (fallbackErr) {
+      Logger.log(`Fallback message also failed: ${fallbackErr}`);
+    }
   }
 };
 

@@ -116,6 +116,7 @@ const getHelpText = () => `🌿 *PANDUAN XENOVIA CARE (CBT BOT)*
 • \`/rekap minggu / bulan\` - Rekap histori CBT.
 • \`/cari <kata_kunci>\` - Cari rekam jejak.
 • \`/grounding\` - Teknik 5-4-3-2-1 Sensory Grounding (meredakan cemas instan).
+• \`/breathing\` - 🫁 Latihan napas Box Breathing (4-4-4-4) dengan panduan visual GIF.
 • \`/win\` - 🏆 Pesan penguatan dari catatan positifmu di masa lalu.
 • \`/stats\` - 📊 Statistik emosi & insight klinis dari data CBT-mu.`;
 

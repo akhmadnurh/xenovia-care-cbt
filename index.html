@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Xenovia Care</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        --bg-main: #17212b;
+        --bg-header: #212d3b;
+        --bg-input: #212d3b;
+        --bg-user: #2b5278;
+        --bg-bot: #182533;
+        --bg-hover: #2b3945;
+        --text-primary: #f5f5f5;
+        --text-secondary: #8b9bab;
+        --text-muted: #6d7f8f;
+        --border-color: #1d2a36;
+        --scrollbar-thumb: #2b3945;
+        --scrollbar-track: #17212b;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg-main);
+        color: var(--text-primary);
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .chat-scroll::-webkit-scrollbar {
+        width: 6px;
+      }
+      .chat-scroll::-webkit-scrollbar-track {
+        background: var(--scrollbar-track);
+      }
+      .chat-scroll::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 3px;
+      }
+      .chat-scroll::-webkit-scrollbar-thumb:hover {
+        background: #3a4e62;
+      }
+
+      .typing-dot {
+        animation: typingBounce 1.4s infinite ease-in-out;
+      }
+      .typing-dot:nth-child(1) {
+        animation-delay: 0s;
+      }
+      .typing-dot:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .typing-dot:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+      @keyframes typingBounce {
+        0%,
+        60%,
+        100% {
+          transform: translateY(0);
+        }
+        30% {
+          transform: translateY(-4px);
+        }
+      }
+
+      .chip {
+        transition: background 0.15s;
+      }
+      .chip:hover {
+        background: var(--bg-hover);
+      }
+      .chip:active {
+        transform: scale(0.97);
+      }
+
+      /* Markdown list styling */
+      .bot-msg ul {
+        list-style: disc;
+        padding-left: 1.2em;
+        margin: 4px 0;
+      }
+      .bot-msg ol {
+        list-style: decimal;
+        padding-left: 1.2em;
+        margin: 4px 0;
+      }
+      .bot-msg li {
+        margin: 2px 0;
+      }
+      .bot-msg p {
+        margin: 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ─── Header ─── -->
+    <div
+      id="header"
+      style="
+        background: var(--bg-header);
+        border-bottom: 1px solid var(--border-color);
+      "
+    >
+      <div class="max-w-2xl mx-auto flex items-center gap-3 px-4 py-2">
+        <!-- Avatar -->
+        <div
+          class="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0"
+          style="background: linear-gradient(135deg, #2b5278, #1a3a5c)"
+        >
+          🌿
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <span
+              class="font-semibold text-sm"
+              style="color: var(--text-primary)"
+              >Xenovia Care</span
+            >
+            <span
+              class="w-2 h-2 rounded-full bg-green-400 flex-shrink-0"
+            ></span>
+            <span class="text-xs" style="color: var(--text-secondary)"
+              >online</span
+            >
+          </div>
+        </div>
+        <!-- Quick Menu -->
+        <div class="hidden sm:flex items-center gap-1 flex-shrink-0">
+          <button
+            onclick="sendQuick('/breathing')"
+            class="chip text-xs px-2 py-1 rounded-full"
+            style="background: var(--bg-hover); color: var(--text-secondary)"
+            title="Breathing"
+          >
+            🫁
+          </button>
+          <button
+            onclick="sendQuick('/grounding')"
+            class="chip text-xs px-2 py-1 rounded-full"
+            style="background: var(--bg-hover); color: var(--text-secondary)"
+            title="Grounding"
+          >
+            🧘
+          </button>
+          <button
+            onclick="sendQuick('/win')"
+            class="chip text-xs px-2 py-1 rounded-full"
+            style="background: var(--bg-hover); color: var(--text-secondary)"
+            title="Win"
+          >
+            🏆
+          </button>
+          <button
+            onclick="sendQuick('/reframe')"
+            class="chip text-xs px-2 py-1 rounded-full"
+            style="background: var(--bg-hover); color: var(--text-secondary)"
+            title="Reframe"
+          >
+            💡
+          </button>
+          <button
+            onclick="sendQuick('/anchor')"
+            class="chip text-xs px-2 py-1 rounded-full"
+            style="background: var(--bg-hover); color: var(--text-secondary)"
+            title="Anchor"
+          >
+            ⚓
+          </button>
+          <button
+            onclick="sendQuick('/stats')"
+            class="chip text-xs px-2 py-1 rounded-full"
+            style="background: var(--bg-hover); color: var(--text-secondary)"
+            title="Stats"
+          >
+            📊
+          </button>
+          <button
+            onclick="sendQuick('/help')"
+            class="chip text-xs px-2 py-1 rounded-full"
+            style="background: var(--bg-hover); color: var(--text-secondary)"
+            title="Help"
+          >
+            ❓
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Chat Area ─── -->
+    <div id="chatArea" class="flex-1 overflow-y-auto chat-scroll px-2 sm:px-0">
+      <div class="max-w-2xl mx-auto py-4 space-y-3 px-2 sm:px-4" id="messages">
+        <!-- Welcome message -->
+        <div class="flex justify-start">
+          <div
+            class="rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] sm:max-w-[75%]"
+            style="background: var(--bg-bot)"
+          >
+            <div
+              class="text-sm leading-relaxed"
+              style="color: var(--text-primary)"
+            >
+              👋 Hai! Aku <strong>Xenovia Care</strong>, teman pendamping
+              CBT-mu.<br /><br />
+              Ceritakan apa yang sedang kamu rasakan, atau pilih salah satu
+              command di bawah.
+            </div>
+            <div class="text-right mt-1">
+              <span
+                class="text-[10px]"
+                style="color: var(--text-muted)"
+                id="welcomeTime"
+              ></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Quick Command Chips ─── -->
+    <div
+      style="
+        background: var(--bg-main);
+        border-top: 1px solid var(--border-color);
+      "
+    >
+      <div
+        class="max-w-2xl mx-auto px-2 sm:px-4 py-2 flex gap-2 overflow-x-auto"
+        style="scrollbar-width: none"
+      >
+        <button
+          onclick="sendQuick('/breathing')"
+          class="chip flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap"
+          style="background: var(--bg-hover); color: var(--text-secondary)"
+        >
+          🫁 /breathing
+        </button>
+        <button
+          onclick="sendQuick('/grounding')"
+          class="chip flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap"
+          style="background: var(--bg-hover); color: var(--text-secondary)"
+        >
+          🧘 /grounding
+        </button>
+        <button
+          onclick="sendQuick('/win')"
+          class="chip flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap"
+          style="background: var(--bg-hover); color: var(--text-secondary)"
+        >
+          🏆 /win
+        </button>
+        <button
+          onclick="sendQuick('/reframe')"
+          class="chip flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap"
+          style="background: var(--bg-hover); color: var(--text-secondary)"
+        >
+          💡 /reframe
+        </button>
+        <button
+          onclick="sendQuick('/anchor')"
+          class="chip flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap"
+          style="background: var(--bg-hover); color: var(--text-secondary)"
+        >
+          ⚓ /anchor
+        </button>
+        <button
+          onclick="sendQuick('/rekap')"
+          class="chip flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap"
+          style="background: var(--bg-hover); color: var(--text-secondary)"
+        >
+          📋 /rekap
+        </button>
+        <button
+          onclick="sendQuick('/stats')"
+          class="chip flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap"
+          style="background: var(--bg-hover); color: var(--text-secondary)"
+        >
+          📊 /stats
+        </button>
+        <button
+          onclick="sendQuick('/help')"
+          class="chip flex-shrink-0 text-xs px-3 py-1.5 rounded-full whitespace-nowrap"
+          style="background: var(--bg-hover); color: var(--text-secondary)"
+        >
+          ❓ /help
+        </button>
+      </div>
+    </div>
+
+    <!-- ─── Input Bar ─── -->
+    <div
+      style="
+        background: var(--bg-input);
+        border-top: 1px solid var(--border-color);
+      "
+    >
+      <div class="max-w-2xl mx-auto px-2 sm:px-4 py-2 flex items-end gap-2">
+        <label for="userInput" class="sr-only">Pesan</label>
+        <textarea
+          id="userInput"
+          rows="1"
+          placeholder="Ketik pesan..."
+          aria-label="Ketik pesan"
+          class="flex-1 resize-none rounded-xl px-4 py-2.5 text-sm outline-none"
+          style="
+            background: var(--bg-main);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            max-height: 120px;
+            min-height: 40px;
+          "
+          onkeydown="handleKeyDown(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+        <button
+          id="sendBtn"
+          onclick="sendMessage()"
+          class="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-colors"
+          style="background: var(--bg-user)"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="white"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <script>
+      // ─── State ───
+      let isGrounding = false;
+      let isBusy = false;
+      const messagesEl = document.getElementById("messages");
+      const inputEl = document.getElementById("userInput");
+      const welcomeTimeEl = document.getElementById("welcomeTime");
+
+      // Set welcome timestamp
+      welcomeTimeEl.textContent = formatTime(new Date());
+
+      // Auto-scroll helper
+      function scrollToBottom() {
+        const chatArea = document.getElementById("chatArea");
+        chatArea.scrollTop = chatArea.scrollHeight;
+      }
+      scrollToBottom();
+
+      // ─── Time formatting ───
+      function formatTime(d) {
+        return d.toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      // ─── Markdown → HTML (lightweight) ───
+      function renderMarkdown(text) {
+        if (!text) return "";
+        let html = text
+          // Escape HTML first
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          // Bold: **text** or *text*
+          .replaceAll(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+          .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>")
+          // Inline code
+          .replaceAll(
+            /`(.+?)`/g,
+            '<code class="px-1 rounded text-xs" style="background:rgba(255,255,255,0.08);">$1</code>',
+          )
+          // Unordered list items
+          .replace(/^[\u2022\-*]\s+(.+)$/gm, "<li>$1</li>")
+          // Ordered list items
+          .replace(/^\d+\.\s+(.+)$/gm, "<li>$1</li>")
+          // Line breaks
+          .split("\n")
+          .join("<br>");
+
+        // Wrap consecutive <li> in <ul>
+        html = html.replace(/((?:<li>.*?<\/li><br>?)+)/g, (match) => {
+          return "<ul>" + match.replaceAll("<br>", "") + "</ul>";
+        });
+
+        return html;
+      }
+
+      // ─── Bubble builders ───
+      function addUserBubble(text) {
+        const div = document.createElement("div");
+        div.className = "flex justify-end";
+        div.innerHTML = `
+    <div class="rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] sm:max-w-[75%]" style="background:var(--bg-user);">
+      <div class="text-sm leading-relaxed whitespace-pre-wrap" style="color:var(--text-primary);">${escapeHtml(text)}</div>
+      <div class="text-right mt-1"><span class="text-[10px]" style="color:rgba(255,255,255,0.5);">${formatTime(new Date())}</span></div>
+    </div>`;
+        messagesEl.appendChild(div);
+        scrollToBottom();
+      }
+
+      function addBotBubble(html) {
+        const div = document.createElement("div");
+        div.className = "flex justify-start";
+        div.innerHTML = `
+    <div class="rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] sm:max-w-[75%] bot-msg" style="background:var(--bg-bot);">
+      <div class="text-sm leading-relaxed" style="color:var(--text-primary);">${html}</div>
+      <div class="text-right mt-1"><span class="text-[10px]" style="color:var(--text-muted);">${formatTime(new Date())}</span></div>
+    </div>`;
+        messagesEl.appendChild(div);
+        scrollToBottom();
+      }
+
+      function addBotGifBubble(gifUrl, caption) {
+        const div = document.createElement("div");
+        div.className = "flex justify-start";
+        div.innerHTML = `
+    <div class="rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] sm:max-w-[75%]" style="background:var(--bg-bot);">
+      <img src="${escapeHtml(gifUrl)}" alt="Breathing animation" class="rounded-lg mb-2 max-w-full" style="max-height:240px;">
+      <div class="text-sm leading-relaxed bot-msg" style="color:var(--text-primary);">${renderMarkdown(caption)}</div>
+      <div class="text-right mt-1"><span class="text-[10px]" style="color:var(--text-muted);">${formatTime(new Date())}</span></div>
+    </div>`;
+        messagesEl.appendChild(div);
+        scrollToBottom();
+      }
+
+      function addTopicChips(topics) {
+        const wrapper = document.createElement("div");
+        wrapper.className = "flex justify-start";
+        const inner = document.createElement("div");
+        inner.className =
+          "rounded-2xl rounded-tl-sm px-4 py-3 max-w-[90%] sm:max-w-[80%]";
+        inner.style.background = "var(--bg-bot)";
+
+        // Title
+        const title = document.createElement("div");
+        title.className = "text-sm mb-2";
+        title.style.color = "var(--text-primary)";
+        title.innerHTML = "💡 <strong>Pilih topik untuk direframe:</strong>";
+        inner.appendChild(title);
+
+        // Chips container
+        const chipsDiv = document.createElement("div");
+        chipsDiv.className = "flex flex-wrap gap-2";
+        topics.forEach((t) => {
+          const btn = document.createElement("button");
+          btn.className = "chip text-xs px-3 py-1.5 rounded-full";
+          btn.style.background = "var(--bg-user)";
+          btn.style.color = "var(--text-primary)";
+          btn.textContent = t.label;
+          btn.onclick = () => {
+            btn.disabled = true;
+            btn.style.opacity = "0.5";
+            google.script.run
+              .withSuccessHandler((res) => {
+                if (res && res.text) addBotBubble(renderMarkdown(res.text));
+              })
+              .withFailureHandler((err) =>
+                addBotBubble("⚠️ Gagal memuat konten."),
+              )
+              .processWebMessage("/reframe_content " + t.id);
+          };
+          chipsDiv.appendChild(btn);
+        });
+        inner.appendChild(chipsDiv);
+
+        // Timestamp
+        const ts = document.createElement("div");
+        ts.className = "text-right mt-1";
+        ts.innerHTML = `<span class="text-[10px]" style="color:var(--text-muted);">${formatTime(new Date())}</span>`;
+        inner.appendChild(ts);
+
+        wrapper.appendChild(inner);
+        messagesEl.appendChild(wrapper);
+        scrollToBottom();
+      }
+
+      function addSaveConfirmButton(cbtData) {
+        const div = document.createElement("div");
+        div.className = "flex justify-start";
+        div.id = "saveConfirmRow";
+        div.innerHTML = `
+    <div class="rounded-2xl rounded-tl-sm px-4 py-3" style="background:var(--bg-bot);">
+      <div class="text-sm" style="color:var(--text-primary);">Mau simpan catatan CBT ini?</div>
+      <div class="flex gap-2 mt-2">
+        <button onclick="confirmSave(this)" class="chip text-xs px-4 py-1.5 rounded-full font-medium" style="background:#2e7d32;color:white;">💾 Simpan</button>
+        <button onclick="skipSave(this)" class="chip text-xs px-4 py-1.5 rounded-full" style="background:var(--bg-hover);color:var(--text-secondary);">Batal</button>
+      </div>
+    </div>`;
+        messagesEl.appendChild(div);
+        scrollToBottom();
+      }
+
+      function confirmSave(btn) {
+        btn.disabled = true;
+        btn.textContent = "✅ Disimpan!";
+        btn.style.opacity = "0.6";
+        google.script.run
+          .withSuccessHandler((res) => {
+            if (res && res.text) addBotBubble(renderMarkdown(res.text));
+          })
+          .withFailureHandler(() => addBotBubble("⚠️ Gagal menyimpan."))
+          .processWebMessage("iya");
+        const row = document.getElementById("saveConfirmRow");
+        if (row) row.remove();
+      }
+
+      function skipSave(btn) {
+        const row = document.getElementById("saveConfirmRow");
+        if (row) row.remove();
+        addBotBubble("Baik, catatan tidak disimpan. 👌");
+      }
+
+      // ─── Typing indicator ───
+      function showTyping() {
+        const div = document.createElement("div");
+        div.className = "flex justify-start";
+        div.id = "typingIndicator";
+        div.innerHTML = `
+    <div class="rounded-2xl rounded-tl-sm px-4 py-3" style="background:var(--bg-bot);">
+      <div class="flex items-center gap-1.5">
+        <span class="text-xs" style="color:var(--text-secondary);">Xenovia Care sedang mengetik</span>
+        <span class="typing-dot w-1.5 h-1.5 rounded-full" style="background:var(--text-secondary);"></span>
+        <span class="typing-dot w-1.5 h-1.5 rounded-full" style="background:var(--text-secondary);"></span>
+        <span class="typing-dot w-1.5 h-1.5 rounded-full" style="background:var(--text-secondary);"></span>
+      </div>
+    </div>`;
+        messagesEl.appendChild(div);
+        scrollToBottom();
+      }
+
+      function hideTyping() {
+        const el = document.getElementById("typingIndicator");
+        if (el) el.remove();
+      }
+
+      // ─── Escape HTML ───
+      function escapeHtml(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      // ─── Auto-resize textarea ───
+      function autoResize(el) {
+        el.style.height = "auto";
+        el.style.height = Math.min(el.scrollHeight, 120) + "px";
+      }
+
+      // ─── Keyboard handler ───
+      function handleKeyDown(e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      }
+
+      // ─── Send message ───
+      function sendMessage() {
+        const text = inputEl.value.trim();
+        if (!text || isBusy) return;
+
+        // Reset input
+        inputEl.value = "";
+        inputEl.style.height = "auto";
+
+        addUserBubble(text);
+        processCommand(text);
+      }
+
+      // ─── Quick command ───
+      function sendQuick(cmd) {
+        if (isBusy) return;
+        addUserBubble(cmd);
+        processCommand(cmd);
+      }
+
+      // ─── Route to bridge ───
+      function processCommand(text) {
+        isBusy = true;
+        showTyping();
+
+        google.script.run
+          .withSuccessHandler(handleResponse)
+          .withFailureHandler(handleError)
+          .processWebMessage(text);
+      }
+
+      // ─── Handle bridge response ───
+      function handleResponse(res) {
+        hideTyping();
+        isBusy = false;
+
+        if (!res) {
+          addBotBubble("⚠️ Tidak ada respons dari server.");
+          return;
+        }
+
+        switch (res.type) {
+          case "gif":
+            addBotGifBubble(res.gifUrl, res.caption);
+            break;
+          case "topics":
+            addBotBubble("💡 <strong>Memuat topik reframing...</strong>");
+            addTopicChips(res.topics);
+            break;
+          case "cbt_complete":
+            addBotBubble(renderMarkdown(res.text));
+            addSaveConfirmButton(res.cbtData);
+            break;
+          case "text":
+          default:
+            // Detect grounding start
+            if (
+              res.text &&
+              res.text.includes("Teknik Grounding 5-4-3-2-1") &&
+              res.text.includes("STEP_5_SEE")
+            ) {
+              isGrounding = true;
+            }
+            // Detect grounding completion
+            if (res.text && res.text.includes("Grounding 5-4-3-2-1 Selesai")) {
+              isGrounding = false;
+            }
+            if (res.text) addBotBubble(renderMarkdown(res.text));
+            break;
+        }
+        inputEl.focus();
+      }
+
+      function handleError(err) {
+        hideTyping();
+        isBusy = false;
+        addBotBubble("⚠️ Terjadi kesalahan koneksi. Silakan coba lagi.");
+        console.error("processWebMessage error:", err);
+        inputEl.focus();
+      }
+
+      // Init: focus input on load
+      inputEl.focus();
+    </script>
+  </body>
+</html>

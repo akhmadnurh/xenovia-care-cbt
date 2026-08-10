@@ -1,6 +1,12 @@
 // ====================================================
-// main.js — WEBHOOK ENTRY POINT (doPost)
+// main.js — WEBHOOK ENTRY POINT (doPost) & WEB APP (doGet)
 // ====================================================
+
+function doGet(e) {
+  return HtmlService.createHtmlOutputFromFile("index")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .setTitle("Xenovia Care");
+}
 
 const doPost = (e) => {
   try {

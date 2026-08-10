@@ -43,6 +43,7 @@ const doPost = (e) => {
           const cbtData = JSON.parse(pendingDataJson);
           saveToSheet(cbtData);
           saveToFirebase(cbtData);
+          const historyJson = cache.get(`HISTORY_${chatId}`);
           cache.remove(`PENDING_CBT_${chatId}`);
           cache.remove(`HISTORY_${chatId}`);
           cache.remove(`MODE_${chatId}`);
@@ -50,6 +51,9 @@ const doPost = (e) => {
             chatId,
             "✅ Data CBT berhasil disimpan ke Google Sheets!",
           );
+          if (historyJson) {
+            generateAndSaveCbtMemory(chatId, JSON.parse(historyJson));
+          }
         } else {
           sendTelegramMessage(
             chatId,
@@ -115,6 +119,7 @@ const doPost = (e) => {
       saveToSheet(cbtData);
       saveToFirebase(cbtData);
       const cache = CacheService.getUserCache();
+      const historyJson = cache.get(`HISTORY_${chatId}`);
       cache.remove(`PENDING_CBT_${chatId}`);
       cache.remove(`HISTORY_${chatId}`);
       cache.remove(`MODE_${chatId}`);
@@ -122,6 +127,9 @@ const doPost = (e) => {
         chatId,
         "✅ Data CBT berhasil disimpan ke Google Sheets!",
       );
+      if (historyJson) {
+        generateAndSaveCbtMemory(chatId, JSON.parse(historyJson));
+      }
       return;
     }
 

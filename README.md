@@ -15,7 +15,8 @@
 
 | Fitur | Deskripsi |
 |:------|:----------|
-| 🧠 **Jurnal & Reframing CBT Interaktif** | Bimbingan refleksi terstruktur: Peristiwa → Pikiran Otomatis → Distorsi Kognitif → Bukti Tandingan → Pikiran Seimbang |
+| 📝 **Jurnal & Reframing CBT Interaktif** | Bimbingan refleksi terstruktur: Peristiwa → Pikiran Otomatis → Distorsi Kognitif → Bukti Tandingan → Pikiran Seimbang |
+| 🧠 **Long-Term Memory (2 Bulan)** | Memori jangka panjang 60 hari: ekstraksi otomatis sesi CBT ke JSON terstruktur (Gemini Flash Lite) + injeksi konteks dinamis ke System Prompt DeepSeek |
 | 🎤 **Voice Message Support** | Transkripsi otomatis pesan suara via Groq Whisper untuk input tanpa mengetik |
 | 🏆 **Narasi Kemenangan** | Pengingat naratif keberhasilan berbasis data jurnal masa lalu |
 | 📊 **Statistik Emosi** | Analisis distribusi pola emosi mingguan/bulanan dengan insight AI |
@@ -27,6 +28,32 @@
 
 ---
 
+## 🧠 Long-Term Memory System (2-Month Context)
+
+> **Fitur baru:** Sistem memori jangka panjang cerdas yang mempertahankan histori perkembangan CBT user selama **60 hari terakhir** — bot tidak lagi "amnesia" antar sesi, tanpa risiko token overload.
+
+### Ringkasan
+
+Setiap kali user **menyimpan jurnal CBT**, transkrip percakapan sesi diekstraksi otomatis menjadi **rangkuman JSON terstruktur** dan disimpan ke Firebase. Saat sesi CBT berikutnya dimulai, rangkuman 2 bulan terakhir disisipkan secara dinamis ke dalam **System Prompt** konselor — sehingga DeepSeek memahami konteks historis user (pemicu berulang, pola distorsi, teknik yang pernah berhasil) tanpa perlu user menceritakan ulang.
+
+### Arsitektur Dual-AI Agent
+
+| Agent | Model | Peran |
+|:------|:------|:------|
+| 🗒️ **Notulis Memori** | Gemini Flash Lite | Mengekstrak transkrip sesi CBT menjadi JSON terstruktur (pemicu, sensasi somatik, distorsi kognitif, reframing, actionable anchor) secara otomatis saat user menyimpan jurnal |
+| 💬 **Konselor CBT Utama** | DeepSeek V4 Flash | Membaca rangkuman memori terstruktur 2 bulan terakhir dari Firebase yang disisipkan secara dinamis ke dalam System Prompt |
+
+**Alur kerja:**
+
+1. User menyelesaikan sesi CBT dan **menyimpan jurnal** (via tombol konfirmasi atau balasan "iya/simpan").
+2. `generateAndSaveCbtMemory()` memanggil **Gemini Flash Lite** (Notulis) dengan transkrip sesi → menghasilkan JSON memori terstruktur.
+3. JSON disimpan ke node `/cbt_memories/{chatId}` di Firebase Realtime DB.
+4. Pada sesi CBT berikutnya, `getTwoMonthMemoryFormatted()` membaca memori 60 hari terakhir → diformat sebagai bullet ringkas → disisipkan ke System Prompt DeepSeek via `buildMemoryContextBlock()`.
+
+> 💡 **Efisiensi:** Hanya **rangkuman terstruktur** yang disimpan & dibaca — bukan transkrip mentah. Ini menjaga konteks tetap kecil (anti token overload) sambil mempertahankan kontinuitas empati antar sesi.
+
+---
+
 ## 🛠️ Tech Stack & Prasyarat Sistem
 
 ### Tech Stack
@@ -35,11 +62,11 @@
 |:---------|:----------|
 | **Runtime** | Google Apps Script (V8 Engine, CommonJS) |
 | **AI Engine (Utama)** | DeepSeek V4 Flash via OpenRouter API |
-| **AI Engine (Stats/Grounding)** | Google Gemini 3.5 Flash Lite |
+| **AI Engine (Stats/Grounding/Notulis Memori)** | Google Gemini 3.5 Flash Lite |
 | **Speech-to-Text** | Groq Whisper (Audio Transcription) |
 | **Platform Interface** | Telegram Bot API (Webhook via Apps Script) |
 | **Database & Storage (Master)** | Google Sheets API v4 — SSOT & Visual Backup |
-| **Database (Caching/Speed Layer)** | Firebase Realtime Database (REST API + Database Secret) |
+| **Database (Caching/Speed Layer & Long-Term Memory)** | Firebase Realtime Database (REST API + Database Secret) |
 | **Session Cache (Ephemeral)** | `CacheService` & `PropertiesService` (Chat CBT, Grounding, Reframe) |
 | **Deployment** | CLASP (Command Line Apps Script) |
 | **Timezone** | Asia/Jakarta (WIB) |
@@ -65,6 +92,9 @@ graph LR
     TG["Telegram User"] -->|"doPost / Webhook"| GAS["Apps Script Bot"]
     GAS -->|"simpan + baca"| SS["Google Sheets<br/>Master Data Store (SSOT)<br/>Visual Backup"]
     GAS -->|"tulis paralel + sync berkala"| FB["Firebase Realtime DB<br/>/jurnal.json - Cache Layer"]
+    GAS -->|"ekstraksi otomatis saat simpan jurnal"| GM["Notulis Memori<br/>Gemini Flash Lite"]
+    GM -->|"JSON terstruktur"| MEM["Firebase Realtime DB<br/>/cbt_memories - Long-Term Memory"]
+    MEM -->|"konteks 2 bulan → System Prompt DeepSeek"| GAS
     GAS -->|"CacheService / PropertiesService"| EP["Ephemeral Session Cache<br/>Chat CBT, Grounding, Reframe"]
     FB -->|"baca cepat"| GAS
 ```
@@ -73,6 +103,7 @@ graph LR
 |:------|:------|:------------------|
 | **Google Sheets** | Master Data Store (SSOT) & Visual Backup — data mentah per tab bulanan (contoh: `Juli 2026`, `Agustus 2026`) | Semua data jurnal permanen, arsip, edit manual |
 | **Firebase Realtime DB** | Caching/Speed Layer via REST API — satu koleksi datar di node `/jurnal.json` | Operasi baca kencang: `/win`, `/cari`, `/stats`, `/rekap` (Firebase-first, fallback ke Sheet) |
+| **Firebase Realtime DB (`/cbt_memories`)** | Long-Term Memory — rangkuman JSON terstruktur per chat user | Injeksi konteks 2 bulan ke System Prompt DeepSeek saat sesi CBT |
 | **CacheService / PropertiesService** | Ephemeral session cache — tidak menyentuh Firebase | Chat CBT interaktif (DeepSeek), Grounding 5-4-3-2-1, state Reframe |
 
 **Alur Data:**
@@ -82,6 +113,53 @@ graph LR
 3. **Sync berkala** — `keepWarm()` (time-driven trigger) menjalankan **Smart Sync** untuk menyatukan seluruh tab jurnal bulanan ke Firebase.
 
 > Sesi chat interaktif (DeepSeek CBT, Grounding 5-4-3-2-1, Reframe) sengaja **tidak** memakai Firebase — cukup `CacheService`/`PropertiesService` yang ephemeral demi efisiensi dan kecepatan respons.
+
+---
+
+## 🗄️ Skema Database Baru (Firebase Realtime DB)
+
+Selain node `/jurnal.json` (cache layer), fitur Long-Term Memory menambahkan node baru **`/cbt_memories`** — satu sub-node per chat user:
+
+```
+/cbt_memories/{chatId}.json
+```
+
+Struktur dokumen memori:
+
+```json
+{
+  "cbt_memories": {
+    "mem_TIMESTAMP": {
+      "timestamp": "ISO_DATE_STRING",
+      "summary_version": 1,
+      "core_insights": {
+        "trigger_and_context": "Pemicu utama atau situasi",
+        "automatic_thoughts": "Pikiran otomatis / overthinking",
+        "somatic_sensations": "Sensasi fisik / somatik",
+        "cbt_distortions": ["Catastrophizing", "..."],
+        "effective_reframing": "Sudut pandang rasional / reframing",
+        "actionable_anchor": "Teknik grounding / coping mechanism"
+      },
+      "raw_summary_narrative": "Ringkasan naratif perkembangan emosi"
+    }
+  }
+}
+```
+
+| Field | Deskripsi |
+|:------|:----------|
+| `id` | Identitas unik memori (`mem_<timestamp>`) |
+| `timestamp` | Waktu sesi (ISO 8601) — dipakai untuk filter 60 hari |
+| `summary_version` | Versi skema ringkasan (saat ini `1`) |
+| `core_insights.trigger_and_context` | Pemicu utama / situasi yang diceritakan user |
+| `core_insights.automatic_thoughts` | Pikiran otomatis / overthinking yang muncul |
+| `core_insights.somatic_sensations` | Sensasi fisik / somatik (isi `-` jika tidak ada) |
+| `core_insights.cbt_distortions` | Daftar distorsi kognitif teridentifikasi |
+| `core_insights.effective_reframing` | Sudut pandang rasional / reframing yang disepakati |
+| `core_insights.actionable_anchor` | Teknik grounding / coping mechanism yang dipakai |
+| `raw_summary_narrative` | Ringkasan naratif 2–3 kalimat dinamika emosi sesi |
+
+> ⚠️ **Catatan:** Firebase Realtime DB tidak mendukung range query pada nilai timestamp tanpa index khusus — filter **60 hari** dilakukan client-side di Apps Script (`getCbtMemoriesLast60Days()`). Memori disimpan **selamanya** (tidak dihapus otomatis); hanya pembacaan yang dibatasi 60 hari terakhir.
 
 ---
 
@@ -117,6 +195,7 @@ clasp login
     "firebaseService.js",
     "sheetLogger.js",
     "cbtHandler.js",
+    "memoryHandler.js",
     "groundingHandler.js",
     "cron.js",
     "main.js"
@@ -330,9 +409,10 @@ xenovia-care-cbt/
 ├── appsscript.json      # Konfigurasi Google Apps Script (timezone, runtime V8)
 ├── config.js            # Konstanta & konfigurasi (API keys, prompt, grounding steps)
 ├── services.js          # Layer API (Telegram, DeepSeek/OpenRouter, Gemini, Groq Whisper)
-├── firebaseService.js   # Layer Firebase Realtime DB (caching/speed layer: save, sync, getLatest, search, keepWarm helpers)
+├── firebaseService.js   # Layer Firebase Realtime DB (caching/speed layer + cbt_memories: save, sync, getLatest, search, keepWarm helpers)
 ├── sheetLogger.js       # Operasi Google Sheets (simpan data, rekap, statistik, cari)
 ├── cbtHandler.js        # Mesin CBT (jurnal interaktif, reframing, anchor, win)
+├── memoryHandler.js     # Long-Term Memory (ekstraksi Gemini, konteks 2 bulan, backfill)
 ├── groundingHandler.js  # Handler teknik grounding 5-4-3-2-1
 ├── breathingHandler.js  # Handler latihan napas Box Breathing (/breathing)
 ├── cron.js              # keepWarm() & Smart Sync otomatis (time-driven trigger)

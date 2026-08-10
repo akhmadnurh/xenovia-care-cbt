@@ -9,10 +9,11 @@ const processCBT_Engine = (chatId, userMessage) => {
   history.push({ role: "user", content: userMessage });
 
   const { dayName, dateStr, timeStr } = formatTimestampJakarta();
+  const memoryContext = getTwoMonthMemoryFormatted(chatId);
   const systemPrompt =
     currentMode === "PURE_LISTENING"
-      ? getPureListenerPrompt(dayName, dateStr, timeStr)
-      : getCbtEvaluatorPrompt(dayName, dateStr, timeStr);
+      ? getPureListenerPrompt(dayName, dateStr, timeStr, memoryContext)
+      : getCbtEvaluatorPrompt(dayName, dateStr, timeStr, memoryContext);
   const messagesPayload = [
     { role: "system", content: systemPrompt },
     ...history,
@@ -57,7 +58,10 @@ const getPureListenerPrompt = (
   dayName,
   dateStr,
   timeStr,
-) => `Kamu adalah Xenovia Care, teman pendengar yang sangat hangat, ramah, empatis, dan bijak.
+  memoryContext,
+) => `${buildMemoryContextBlock(memoryContext)}
+
+Kamu adalah Xenovia Care, teman pendengar yang sangat hangat, ramah, empatis, dan bijak.
 KONTEKS WAKTU SAAT INI (WIB): Hari: ${dayName}, Tanggal: ${dateStr}, Jam Sekarang: ${timeStr}
 
 TUGAS UTAMA:
@@ -86,7 +90,10 @@ const getCbtEvaluatorPrompt = (
   dayName,
   dateStr,
   timeStr,
-) => `Kamu adalah Xenovia Care, konselor CBT yang hangat dan bijak. Pengguna sudah selesai bercerita dan siap melakukan refleksi CBT.
+  memoryContext,
+) => `${buildMemoryContextBlock(memoryContext)}
+
+Kamu adalah Xenovia Care, konselor CBT yang hangat dan bijak. Pengguna sudah selesai bercerita dan siap melakukan refleksi CBT.
 KONTEKS WAKTU SAAT INI (WIB): Hari: ${dayName}, Tanggal: ${dateStr}, Jam Sekarang: ${timeStr}
 
 ATURAN UMUM & INTERAKSI:

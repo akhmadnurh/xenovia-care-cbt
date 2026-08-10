@@ -125,7 +125,7 @@ const getLatestRowsFromFirebase = (limit = 30) => {
   if (!firebaseAvailable()) return [];
   try {
     const { url, secret } = getFirebaseConfig();
-    const endpoint = `${url}/jurnal.json?orderBy="$key"&limitToLast=${limit}&auth=${secret}`;
+    const endpoint = `${url}/jurnal.json?orderBy=${encodeURIComponent('"$key"')}&limitToLast=${limit}&auth=${secret}`;
     const res = fetchWithRetry(endpoint);
     if (res.getResponseCode() === 200) {
       const data = JSON.parse(res.getContentText());
@@ -136,6 +136,46 @@ const getLatestRowsFromFirebase = (limit = 30) => {
     }
   } catch (e) {
     Logger.log(`Firebase Get Error: ${e}`);
+  }
+  return [];
+};
+
+// POST 1 entry memori CBT terstruktur ke node cbt_memories/{chatId}
+const saveCbtMemory = (chatId, memoryObj) => {
+  if (!firebaseAvailable()) return;
+  try {
+    const { url, secret } = getFirebaseConfig();
+    fetchWithRetry(`${url}/cbt_memories/${chatId}.json?auth=${secret}`, {
+      method: "post",
+      contentType: "application/json",
+      payload: JSON.stringify(memoryObj),
+    });
+  } catch (e) {
+    Logger.log(`Firebase Memory Save Error: ${e}`);
+  }
+};
+
+// GET semua memori user lalu filter 60 hari terakhir (sliding window)
+const getCbtMemoriesLast60Days = (chatId) => {
+  if (!firebaseAvailable()) return [];
+  try {
+    const { url, secret } = getFirebaseConfig();
+    const endpoint = `${url}/cbt_memories/${chatId}.json?limitToLast=200&auth=${secret}`;
+    const res = fetchWithRetry(endpoint);
+    if (res.getResponseCode() === 200) {
+      const data = JSON.parse(res.getContentText());
+      if (!data || typeof data !== "object") return [];
+      const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+      return Object.values(data)
+        .filter((m) => m && typeof m === "object")
+        .filter((m) => {
+          const ts = m.timestamp ? new Date(m.timestamp).getTime() : 0;
+          return ts >= cutoff;
+        })
+        .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    }
+  } catch (e) {
+    Logger.log(`Firebase Memory Get Error: ${e}`);
   }
   return [];
 };

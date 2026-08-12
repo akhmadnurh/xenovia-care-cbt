@@ -3,6 +3,16 @@
 // ====================================================
 
 function doGet(e) {
+  const page = e && e.parameter && e.parameter.page;
+  if (page === "breathing") {
+    return HtmlService.createHtmlOutputFromFile("Breathing")
+      .setTitle("Latihan Napas Interaktif")
+      .addMetaTag(
+        "viewport",
+        "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no",
+      )
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
   return HtmlService.createHtmlOutputFromFile("index")
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .setTitle("Xenovia Care");
@@ -210,7 +220,7 @@ const doPost = (e) => {
       return;
     }
 
-    var cleanText = userMessage
+    let cleanText = userMessage
       .trim()
       .split(" ")[0]
       .split("@")[0]
@@ -225,11 +235,28 @@ const doPost = (e) => {
       return;
     }
 
+    if (cleanText === "/fokus_luar") {
+      handleStartAttentionShift(chatId);
+      return;
+    }
+
     // Grounding state bypass — route to Gemini, bypass DeepSeek CBT engine
     const props = PropertiesService.getUserProperties();
     const groundingState = props.getProperty(`GROUNDING_STATE_${chatId}`);
     if (groundingState) {
       const reply = processGroundingStep(chatId, userMessage, groundingState);
+      sendTelegramMessage(chatId, reply);
+      return;
+    }
+
+    // Attention shift state bypass
+    const attentionState = props.getProperty(`ATTENTION_STATE_${chatId}`);
+    if (attentionState) {
+      const reply = processAttentionShiftStep(
+        chatId,
+        userMessage,
+        attentionState,
+      );
       sendTelegramMessage(chatId, reply);
       return;
     }

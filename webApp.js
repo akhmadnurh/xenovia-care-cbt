@@ -19,6 +19,7 @@ function processWebMessage(input) {
     // --- Fixed commands ---
     if (lower === "/breathing") return _webBreathing();
     if (lower === "/grounding") return _webStartGrounding();
+    if (lower === "/fokus_luar") return _webStartAttentionShift();
     if (lower === "/win") return _webWin();
     if (lower === "/reframe") return _webReframeTopics();
     if (lower.startsWith("/reframe_content")) return _webReframeContent(raw);
@@ -36,6 +37,13 @@ function processWebMessage(input) {
     const groundingState = props.getProperty(`GROUNDING_STATE_${WEB_CHAT_ID}`);
     if (groundingState) {
       const reply = processGroundingStep(WEB_CHAT_ID, raw, groundingState);
+      return { type: "text", text: reply };
+    }
+
+    // --- Attention shift in progress? ---
+    const attentionState = props.getProperty(`ATTENTION_STATE_${WEB_CHAT_ID}`);
+    if (attentionState) {
+      const reply = processAttentionShiftStep(WEB_CHAT_ID, raw, attentionState);
       return { type: "text", text: reply };
     }
 
@@ -304,7 +312,7 @@ STRUKTUR OUTPUT (HANYA DUA BARIS):
 SALAM: [1-2 kalimat salam pagi]
 ANCHOR: [1 kalimat anchor singkat tanpa tanda petik]`;
 
-  const aiRes = callGemini(promptAnchor, 0.4);
+  const aiRes = callGemini(promptAnchor, 0.75); // temp 0.7 - 0.8 for dynamic generation
   let anchorText;
   if (aiRes && aiRes.trim() !== "") {
     const lines = aiRes
@@ -318,7 +326,13 @@ ANCHOR: [1 kalimat anchor singkat tanpa tanda petik]`;
       if (upper.startsWith("SALAM:")) salam = line.substring(6).trim();
       else if (upper.startsWith("ANCHOR:")) anchor = line.substring(7).trim();
     });
-    const cleanAnchor = anchor.replace(/^"+|"+$/g, "");
+    let cleanAnchor = anchor.trim();
+    if (cleanAnchor.startsWith('"')) {
+      cleanAnchor = cleanAnchor.substring(1);
+    }
+    if (cleanAnchor.endsWith('"')) {
+      cleanAnchor = cleanAnchor.substring(0, cleanAnchor.length - 1);
+    }
     anchorText = `🌅 **Selamat Pagi!**\n${salam}\n\n💡 **Pegangan Utama Hari Ini:**\n"${cleanAnchor}"`;
   } else {
     anchorText = `🌅 **Selamat Pagi!**\n${DEFAULT_MORNING_GREETING}\n\n💡 **Pegangan Utama Hari Ini:**\n"${DEFAULT_ANCHOR_SENTENCE}"`;

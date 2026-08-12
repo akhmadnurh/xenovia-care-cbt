@@ -64,6 +64,13 @@ const getPureListenerPrompt = (
 Kamu adalah Xenovia Care, teman pendengar yang sangat hangat, ramah, empatis, dan bijak.
 KONTEKS WAKTU SAAT INI (WIB): Hari: ${dayName}, Tanggal: ${dateStr}, Jam Sekarang: ${timeStr}
 
+PETUNJUK KHUSUS MENGATASI BODY SCANNING & SENSASI SOMATIK:
+1. Jika user mulai membahas, mempertanyakan, atau menganalisis sensasi fisik/tubuh secara mendalam (misal: rasa berat di dada, detak jantung, pusing, kantuk berlebih, dsb.), DILARANG KERAS membiarkan user terus membedah atau menguraikan sensasi tersebut.
+2. Terapkan teknik "Gently Redirect to External": Validasi emosi/kecemasannya secara singkat (1 kalimat), lalu SEGERA alihkan perhatian user ke lingkungan luar/eksternal.
+3. Contoh Respon yang Diharapkan:
+   "Aku paham sensasi itu bikin enggak nyaman. Tapi daripada kita terus menganalisis sinyal tubuh yang bikin overthinking, yuk lempar senter perhatianmu ke luar sebentar. Coba sebutkan 3 benda di sekitarmu yang warnanya biru/cerah saat ini."
+4. Dorong user untuk menyadari bahwa sensasi fisik adalah 'background noise' yang tidak perlu dianalisis atau dicari solusinya saat itu juga.
+
 TUGAS UTAMA:
 1. Dengarkan cerita pengguna dengan penuh perhatian, empati, dan kehangatan.
 2. FASE BERCERITA = FASE MENYIMAK. SELAMA pengguna masih bercerita, DILARANG KERAS menanyakan angka/skala emosi, pikiran otomatis, distorsi kognitif, atau melakukan analisis psikologi kaku. Cukup berikan respon validasi yang hangat dan dengarkan.
@@ -95,6 +102,13 @@ const getCbtEvaluatorPrompt = (
 
 Kamu adalah Xenovia Care, konselor CBT yang hangat dan bijak. Pengguna sudah selesai bercerita dan siap melakukan refleksi CBT.
 KONTEKS WAKTU SAAT INI (WIB): Hari: ${dayName}, Tanggal: ${dateStr}, Jam Sekarang: ${timeStr}
+
+PETUNJUK KHUSUS MENGATASI BODY SCANNING & SENSASI SOMATIK:
+1. Jika user mulai membahas, mempertanyakan, atau menganalisis sensasi fisik/tubuh secara mendalam (misal: rasa berat di dada, detak jantung, pusing, kantuk berlebih, dsb.), DILARANG KERAS membiarkan user terus membedah atau menguraikan sensasi tersebut.
+2. Terapkan teknik "Gently Redirect to External": Validasi emosi/kecemasannya secara singkat (1 kalimat), lalu SEGERA alihkan perhatian user ke lingkungan luar/eksternal.
+3. Contoh Respon yang Diharapkan:
+   "Aku paham sensasi itu bikin enggak nyaman. Tapi daripada kita terus menganalisis sinyal tubuh yang bikin overthinking, yuk lempar senter perhatianmu ke luar sebentar. Coba sebutkan 3 benda di sekitarmu yang warnanya biru/cerah saat ini."
+4. Dorong user untuk menyadari bahwa sensasi fisik adalah 'background noise' yang tidak perlu dianalisis atau dicari solusinya saat itu juga.
 
 ATURAN UMUM & INTERAKSI:
 - SENSOR SELESAI CERITA: Jika pengguna masih bercerita, berikan tanggapan yang validatif dan hangat. Jika pengguna memberikan penanda cerita selesai (misal: "udah itu aja", "itu aja sih", "ceritaku cuma itu"), LANGSUNG OTOMATIS masuk ke Alur Evaluasi CBT di bawah tanpa perlu bertanya konfirmasi.
@@ -217,7 +231,7 @@ SALAM: [1-2 kalimat salam pagi yang segar & variatif]
 ANCHOR: [1 kalimat anchor singkat tanpa tanda petik]`;
 
   // Build anchor message with hard‑enforced quotes and SALAM/ANCHOR parsing
-  const aiRes = callGemini(promptAnchor, 0.4);
+  const aiRes = callGemini(promptAnchor, 0.75); // temp 0.7 - 0.8 for dynamic generation
   let anchorText;
   if (aiRes && aiRes.trim() !== "") {
     // Expected two lines: SALAM: ... and ANCHOR: ...
@@ -226,7 +240,7 @@ ANCHOR: [1 kalimat anchor singkat tanpa tanda petik]`;
       .map((l) => l.trim())
       .filter(Boolean);
     let salam = DEFAULT_MORNING_GREETING;
-    let anchor = DEFAULT_ANCHOR_SENTENCE;
+    let anchor = "";
     lines.forEach((line) => {
       const upper = line.toUpperCase();
       if (upper.startsWith("SALAM:")) {
@@ -235,12 +249,20 @@ ANCHOR: [1 kalimat anchor singkat tanpa tanda petik]`;
         anchor = line.substring(7).trim();
       }
     });
-    // Remove any stray quotes from anchor then wrap with required quotes
-    const cleanAnchor = anchor.replace(/^"+|"+$/g, "");
+
+    // Use the dynamically generated anchor if present, otherwise fallback to presets
+    let cleanAnchor = anchor ? anchor.trim() : ANCHOR_PRESETS[0];
+    if (cleanAnchor.startsWith('"')) {
+      cleanAnchor = cleanAnchor.substring(1);
+    }
+    if (cleanAnchor.endsWith('"')) {
+      cleanAnchor = cleanAnchor.substring(0, cleanAnchor.length - 1);
+    }
     anchorText = `🌅 **Selamat Pagi!**\n${salam}\n\n💡 **Pegangan Utama Hari Ini:**\n"${cleanAnchor}"`;
   } else {
     // Fallback to defaults, ensuring quotes are present
-    anchorText = `🌅 **Selamat Pagi!**\n${DEFAULT_MORNING_GREETING}\n\n💡 **Pegangan Utama Hari Ini:**\n"${DEFAULT_ANCHOR_SENTENCE}"`;
+    const cleanAnchor = ANCHOR_PRESETS[0];
+    anchorText = `🌅 **Selamat Pagi!**\n${DEFAULT_MORNING_GREETING}\n\n💡 **Pegangan Utama Hari Ini:**\n"${cleanAnchor}"`;
   }
 
   const widgetSs = SpreadsheetApp.getActiveSpreadsheet();
@@ -249,10 +271,10 @@ ANCHOR: [1 kalimat anchor singkat tanpa tanda petik]`;
     widgetSs.insertSheet("Widget_Anchor");
   const distilledLine = anchorText.includes("Pegangan Utama Hari Ini:")
     ? (anchorText.split("Pegangan Utama Hari Ini:")[1] ?? "")
-        .replace(/\*\*/g, "")
-        .replace(/[""]/g, "")
+        .replaceAll("**", "")
+        .replaceAll('"', "")
         .trim()
-    : anchorText.replace(/\*\*/g, "").replace(/[""]/g, "").trim();
+    : anchorText.replaceAll("**", "").replaceAll('"', "").trim();
   widgetSheet.getRange("A1").setValue(distilledLine);
   const { dateStr, timeStr } = formatTimestampJakarta();
   widgetSheet.getRange("B1").setValue(`Last Update: ${dateStr} ${timeStr}`);

@@ -10,11 +10,25 @@ Ikuti ritme animasi di atas secara perlahan:
 3. 🌬️ **Hembuskan** saat lingkaran menguncup (4 detik)
 4. ⏸️ **Tahan Napas** saat lingkaran kecil (4 detik)
 
+*Petunjuk Tambahan:*
+Sambil mengikuti pola pernapasan, **JAGA MATAMU TETAP TERBUKA**. Gerakkan pandangan matamu menelusuri pergerakan animasi di layar. Tekan jempolmu ke permukaan meja/benda keras di dekatmu untuk mengunci perhatian ke luar.
+
 Lakukan 3–5 siklus sampai detak jantung melambat dan emosi terasa lebih tenang.`;
 
 const handleBreathing = (chatId) => {
   try {
-    sendTelegramAnimation(chatId, CONFIG.GIF_BREATHING_URL, BREATHING_CAPTION);
+    const webAppUrl = `${ScriptApp.getService().getUrl()}?page=breathing`;
+    const replyMarkup = {
+      inline_keyboard: [
+        [
+          {
+            text: "🫁 Mulai Latihan Napas Interaktif",
+            web_app: { url: webAppUrl },
+          },
+        ],
+      ],
+    };
+    sendTelegramMessage(chatId, BREATHING_CAPTION, replyMarkup);
   } catch (err) {
     Logger.log(`Breathing error: ${err}`);
     sendTelegramMessage(

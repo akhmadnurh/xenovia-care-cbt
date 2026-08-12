@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>Latihan Napas Interaktif</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #0d1117;
+        color: #e6edf3;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        overflow: hidden;
+        user-select: none;
+      }
+      #phase-label {
+        font-size: 1.6rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        margin-bottom: 6px;
+        transition: color 0.4s;
+      }
+      #timer-label {
+        font-size: 3rem;
+        font-weight: 800;
+        margin-bottom: 16px;
+        font-variant-numeric: tabular-nums;
+      }
+      canvas {
+        display: block;
+        border-radius: 16px;
+      }
+      #hint {
+        margin-top: 18px;
+        font-size: 0.78rem;
+        color: #8b949e;
+        text-align: center;
+        max-width: 300px;
+        line-height: 1.5;
+        padding: 0 12px;
+      }
+      #cycle-label {
+        margin-top: 10px;
+        font-size: 0.85rem;
+        color: #58a6ff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="phase-label">Bersiap...</div>
+    <div id="timer-label">4</div>
+    <canvas id="canvas"></canvas>
+    <div id="cycle-label">Siklus 1 / 5</div>
+    <div id="hint">
+      Jaga mata tetap terbuka. Ikuti pergerakan titik bercahaya di layar secara
+      aktif.
+    </div>
+
+    <script>
+      // --- Telegram WebApp init ---
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        // Apply Telegram theme colors if available
+        if (tg.themeParams && tg.themeParams.bg_color) {
+          document.body.style.background = tg.themeParams.bg_color;
+        }
+      }
+
+      // --- Canvas setup ---
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const SIZE = Math.min(window.innerWidth - 32, 320);
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const CX = SIZE / 2;
+      const CY = SIZE / 2;
+      const R = SIZE * 0.38; // orbit radius
+
+      // --- Box Breathing phases ---
+      const PHASES = [
+        { label: "Tarik Napas", color: "#58a6ff", seconds: 4 },
+        { label: "Tahan", color: "#f0883e", seconds: 4 },
+        { label: "Hembuskan", color: "#3fb950", seconds: 4 },
+        { label: "Tahan", color: "#bc8cff", seconds: 4 },
+      ];
+      const TOTAL_CYCLES = 5;
+
+      // --- Random trajectory selection ---
+      const TRAJECTORIES = ["infinity", "wave", "orbit", "zigzag"];
+      const trajectory =
+        TRAJECTORIES[Math.floor(Math.random() * TRAJECTORIES.length)];
+
+      // Returns {x, y} for a given normalised t in [0,1] and phase index
+      function getPos(t, phaseIdx) {
+        // Map phase + t to a global progress [0,1] across the full 16-second cycle
+        const globalT = (phaseIdx + t) / 4;
+        const angle = globalT * Math.PI * 2;
+
+        switch (trajectory) {
+          case "infinity": {
+            // Lemniscate of Bernoulli
+            const scale = R;
+            const denom = 1 + Math.sin(angle) * Math.sin(angle);
+            return {
+              x: CX + (scale * Math.cos(angle)) / denom,
+              y: CY + (scale * Math.sin(angle) * Math.cos(angle)) / denom,
+            };
+          }
+          case "wave": {
+            const x = CX + R * Math.cos(angle);
+            const y = CY + R * 0.5 * Math.sin(angle * 3);
+            return { x, y };
+          }
+          case "orbit": {
+            // Elliptical orbit with slight wobble
+            const wobble = Math.sin(angle * 5) * R * 0.12;
+            return {
+              x: CX + (R + wobble) * Math.cos(angle),
+              y: CY + (R * 0.6 + wobble) * Math.sin(angle),
+            };
+          }
+          case "zigzag": {
+            // Lissajous-style figure
+            return {
+              x: CX + R * Math.sin(angle * 2),
+              y: CY + R * Math.sin(angle * 3 + Math.PI / 4),
+            };
+          }
+          default:
+            return { x: CX + R * Math.cos(angle), y: CY + R * Math.sin(angle) };
+        }
+      }
+
+      // --- Trail buffer ---
+      const TRAIL_LEN = 28;
+      const trail = [];
+
+      // --- State ---
+      let phaseIdx = 0;
+      let phaseElapsed = 0; // seconds elapsed in current phase
+      let cycleCount = 1;
+      let lastTimestamp = null;
+      let done = false;
+
+      const phaseLabel = document.getElementById("phase-label");
+      const timerLabel = document.getElementById("timer-label");
+      const cycleLabel = document.getElementById("cycle-label");
+
+      function drawFrame(pos, phase) {
+        ctx.clearRect(0, 0, SIZE, SIZE);
+
+        // Background ring guide
+        ctx.beginPath();
+        ctx.arc(CX, CY, R, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,255,255,0.05)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Trail
+        for (let i = 0; i < trail.length; i++) {
+          const alpha = (i / trail.length) * 0.5;
+          const radius = 4 + (i / trail.length) * 6;
+          ctx.beginPath();
+          ctx.arc(trail[i].x, trail[i].y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${hexToRgb(phase.color)},${alpha})`;
+          ctx.fill();
+        }
+
+        // Glow
+        const grd = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 22);
+        grd.addColorStop(0, phase.color + "ff");
+        grd.addColorStop(0.4, phase.color + "88");
+        grd.addColorStop(1, phase.color + "00");
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 22, 0, Math.PI * 2);
+        ctx.fillStyle = grd;
+        ctx.fill();
+
+        // Core dot
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffffff";
+        ctx.fill();
+      }
+
+      function hexToRgb(hex) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `${r},${g},${b}`;
+      }
+
+      function tick(timestamp) {
+        if (done) return;
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        const delta = (timestamp - lastTimestamp) / 1000; // seconds
+        lastTimestamp = timestamp;
+
+        phaseElapsed += delta;
+        const phase = PHASES[phaseIdx];
+
+        if (phaseElapsed >= phase.seconds) {
+          phaseElapsed -= phase.seconds;
+          phaseIdx = (phaseIdx + 1) % PHASES.length;
+          if (phaseIdx === 0) {
+            cycleCount++;
+            if (cycleCount > TOTAL_CYCLES) {
+              done = true;
+              phaseLabel.textContent = "✅ Selesai!";
+              phaseLabel.style.color = "#3fb950";
+              timerLabel.textContent = "";
+              cycleLabel.textContent = `${TOTAL_CYCLES} siklus selesai`;
+              ctx.clearRect(0, 0, SIZE, SIZE);
+              return;
+            }
+            cycleLabel.textContent = `Siklus ${cycleCount} / ${TOTAL_CYCLES}`;
+          }
+        }
+
+        const currentPhase = PHASES[phaseIdx];
+        const t = phaseElapsed / currentPhase.seconds; // 0..1
+        const pos = getPos(t, phaseIdx);
+
+        trail.push({ x: pos.x, y: pos.y });
+        if (trail.length > TRAIL_LEN) trail.shift();
+
+        drawFrame(pos, currentPhase);
+
+        phaseLabel.textContent = currentPhase.label;
+        phaseLabel.style.color = currentPhase.color;
+        timerLabel.textContent = Math.ceil(currentPhase.seconds - phaseElapsed);
+
+        requestAnimationFrame(tick);
+      }
+
+      // Brief countdown before starting
+      let countdown = 3;
+      phaseLabel.textContent = "Bersiap...";
+      timerLabel.textContent = countdown;
+      const countdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown <= 0) {
+          clearInterval(countdownInterval);
+          timerLabel.textContent = PHASES[0].seconds;
+          requestAnimationFrame(tick);
+        } else {
+          timerLabel.textContent = countdown;
+        }
+      }, 1000);
+    </script>
+  </body>
+</html>

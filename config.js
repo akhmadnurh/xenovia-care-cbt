@@ -39,31 +39,36 @@ const GROUNDING_LABELS = {
     label: "👁️ 5 Hal yang Kamu Lihat",
     target: 5,
     verb: "lihat",
-    detail: "sebut benda + detail visual (warna, bentuk, ukuran)",
+    detail:
+      "sebut benda/objek di sekitarmu + detail visual (warna, bentuk, ukuran)",
   },
   STEP_4_FEEL: {
-    label: "✋ 4 Hal yang Kamu Rasakan",
+    label: "✋ 4 Hal yang Kamu Rasakan (Eksternal)",
     target: 4,
     verb: "sentuh/rasakan",
-    detail: "sebut objek + tekstur/suhu (kasar, halus, dingin, hangat)",
+    detail:
+      "sebut benda di dekatmu + tekstur/suhu (kasar, halus, dingin, hangat)",
   },
   STEP_3_HEAR: {
     label: "👂 3 Suara yang Kamu Dengar",
     target: 3,
     verb: "dengar",
-    detail: "sebut sumber suara (kipas, kendaraan, suara hewan)",
+    detail:
+      "sebut sumber suara dari luar ruangan/sekitarmu (kipas, kendaraan, suara hewan)",
   },
   STEP_2_SMELL: {
     label: "👃 2 Bau yang Kamu Cium",
     target: 2,
     verb: "cium",
-    detail: "sebut aroma spesifik (wangi parfum, bau makanan, udara netral)",
+    detail:
+      "sebut aroma spesifik di udara sekitarmu (wangi parfum, bau makanan, udara netral)",
   },
   STEP_1_TASTE: {
-    label: "👅 1 Rasa yang Kamu Kecap",
+    label: "👅 1 Objek Terjauh yang Kamu Pandang",
     target: 1,
-    verb: "kecap",
-    detail: "sebut rasa spesifik di mulut (asin, manis, pahit, netral)",
+    verb: "pandang",
+    detail:
+      "sebut 1 objek terjauh di luar ruangan yang bisa kamu pandang saat ini",
   },
 };
 
@@ -117,6 +122,7 @@ const getHelpText = () => `🌿 *PANDUAN XENOVIA CARE (CBT BOT)*
 • \`/cari <kata_kunci>\` - Cari rekam jejak.
 • \`/grounding\` - Teknik 5-4-3-2-1 Sensory Grounding (meredakan cemas instan).
 • \`/breathing\` - 🫁 Latihan napas Box Breathing (4-4-4-4) dengan panduan visual GIF.
+• \`/fokus_luar\` - 🧩 Latihan 1 menit menunda body scanning & mengalihkan perhatian keluar.
 • \`/win\` - 🏆 Pesan penguatan dari catatan positifmu di masa lalu.
 • \`/stats\` - 📊 Statistik emosi & insight klinis dari data CBT-mu.`;
 
@@ -126,7 +132,13 @@ const FALLBACK_DEEPSEEK_UNREACHABLE =
   "Maaf, sistem sedang tidak dapat dijangkau.";
 
 const DEFAULT_ANCHOR_SENTENCE =
-  "Aku tahu rasa waswas ini cuma sinyal tubuh yang terlalu peka, bukan bahaya nyata. Tubuhku aman, sehat, dan aku pegang kendali penuh.";
+  "Sensasi fisik itu cuma background noise. Biarkan lewat, fokuskan mata ke depan.";
+
+const ANCHOR_PRESETS = [
+  "Sensasi fisik itu cuma background noise. Biarkan lewat, fokuskan mata ke depan.",
+  "Tubuh cuma lagi melepaskan sisa energi. Kembalikan perhatian ke aktivitas luar.",
+  "Jangan dianalisis. Lempar senter perhatianmu ke sekelilingmu sekarang.",
+];
 
 const DEFAULT_MORNING_GREETING =
   "Selamat pagi! Bangun tidur dengan tenang ya. Ingat, kamu sudah melangkah sejauh ini dan selalu berhasil melewati setiap rasa cemas dengan baik. Tubuh dan pikiranmu sebenarnya jauh lebih tangguh dari apa yang sering kamu khawatirkan.";

@@ -16,6 +16,7 @@
       }
       body {
         background: #0d1117;
+        transition: background 0.6s ease;
         color: #e6edf3;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         display: flex;
@@ -38,6 +39,9 @@
         font-weight: 800;
         margin-bottom: 16px;
         font-variant-numeric: tabular-nums;
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
       canvas {
         display: block;
@@ -61,7 +65,9 @@
   </head>
   <body>
     <div id="phase-label">Bersiap...</div>
-    <div id="timer-label">4</div>
+    <div id="timer-label">
+      <span id="phase-emoji"></span><span id="timer-num">4</span>
+    </div>
     <canvas id="canvas"></canvas>
     <div id="cycle-label">Siklus 1 / 5</div>
     <div id="hint">
@@ -84,70 +90,56 @@
       // --- Canvas setup ---
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
-      const SIZE = Math.min(window.innerWidth - 32, 320);
+      const SIZE = Math.min(
+        window.innerWidth - 16,
+        window.innerHeight * 0.55,
+        480,
+      );
       canvas.width = SIZE;
       canvas.height = SIZE;
       const CX = SIZE / 2;
       const CY = SIZE / 2;
-      const R = SIZE * 0.38; // orbit radius
+      const R = SIZE * 0.42; // orbit radius
+      const DOT_R = SIZE * 0.022; // core dot radius
 
-      // --- Box Breathing phases ---
+      // --- Box Breathing phases (4-2-6) ---
       const PHASES = [
         { label: "Tarik Napas", color: "#58a6ff", seconds: 4 },
-        { label: "Tahan", color: "#f0883e", seconds: 4 },
-        { label: "Hembuskan", color: "#3fb950", seconds: 4 },
-        { label: "Tahan", color: "#bc8cff", seconds: 4 },
+        { label: "Tahan", color: "#f0883e", seconds: 2 },
+        { label: "Hembuskan", color: "#3fb950", seconds: 6 },
       ];
       const TOTAL_CYCLES = 5;
+      const PHASE_EMOJI = { "Tarik Napas": "🫁", Tahan: "⏸️", Hembuskan: "🌬️" };
+      const BASE_BG = "#0d1117";
 
-      // --- Random trajectory selection ---
-      const TRAJECTORIES = ["infinity", "wave", "orbit", "zigzag"];
-      const trajectory =
-        TRAJECTORIES[Math.floor(Math.random() * TRAJECTORIES.length)];
+      // --- Random walk state (slow, wide exploration) ---
+      let dotAngle = Math.random() * Math.PI * 2;
+      let dotAngleV = (Math.random() - 0.5) * 0.04;
+      let dotDist = R * (0.3 + Math.random() * 0.4);
+      let dotDistV = (Math.random() - 0.5) * R * 0.02;
 
-      // Returns {x, y} for a given normalised t in [0,1] and phase index
-      function getPos(t, phaseIdx) {
-        // Map phase + t to a global progress [0,1] across the full 16-second cycle
-        const globalT = (phaseIdx + t) / 4;
-        const angle = globalT * Math.PI * 2;
+      function updateRandomWalk() {
+        // Angle: gentle turn with occasional bigger shifts
+        dotAngleV += (Math.random() - 0.5) * 0.01;
+        dotAngleV *= 0.985;
+        dotAngle += dotAngleV;
 
-        switch (trajectory) {
-          case "infinity": {
-            // Lemniscate of Bernoulli
-            const scale = R;
-            const denom = 1 + Math.sin(angle) * Math.sin(angle);
-            return {
-              x: CX + (scale * Math.cos(angle)) / denom,
-              y: CY + (scale * Math.sin(angle) * Math.cos(angle)) / denom,
-            };
-          }
-          case "wave": {
-            const x = CX + R * Math.cos(angle);
-            const y = CY + R * 0.5 * Math.sin(angle * 3);
-            return { x, y };
-          }
-          case "orbit": {
-            // Elliptical orbit with slight wobble
-            const wobble = Math.sin(angle * 5) * R * 0.12;
-            return {
-              x: CX + (R + wobble) * Math.cos(angle),
-              y: CY + (R * 0.6 + wobble) * Math.sin(angle),
-            };
-          }
-          case "zigzag": {
-            // Lissajous-style figure
-            return {
-              x: CX + R * Math.sin(angle * 2),
-              y: CY + R * Math.sin(angle * 3 + Math.PI / 4),
-            };
-          }
-          default:
-            return { x: CX + R * Math.cos(angle), y: CY + R * Math.sin(angle) };
-        }
+        // Distance: strong random push, weak centering — lets dot reach edges
+        dotDistV += (Math.random() - 0.5) * R * 0.012;
+        dotDistV += (R * 0.5 - dotDist) * 0.0006;
+        dotDistV *= 0.975;
+        dotDist = Math.max(R * 0.05, Math.min(R * 0.95, dotDist));
+      }
+
+      function getPos() {
+        return {
+          x: CX + dotDist * Math.cos(dotAngle),
+          y: CY + dotDist * Math.sin(dotAngle),
+        };
       }
 
       // --- Trail buffer ---
-      const TRAIL_LEN = 28;
+      const TRAIL_LEN = 50;
       const trail = [];
 
       // --- State ---
@@ -158,23 +150,34 @@
       let done = false;
 
       const phaseLabel = document.getElementById("phase-label");
-      const timerLabel = document.getElementById("timer-label");
+      const timerNum = document.getElementById("timer-num");
+      const phaseEmoji = document.getElementById("phase-emoji");
       const cycleLabel = document.getElementById("cycle-label");
 
-      function drawFrame(pos, phase) {
+      function drawFrame(pos, phase, progress) {
         ctx.clearRect(0, 0, SIZE, SIZE);
 
-        // Background ring guide
+        // --- Progress ring (phase time remaining) ---
+        const ringR = R + DOT_R * 4;
+        const startA = -Math.PI / 2;
+        const endA = startA + progress * Math.PI * 2;
         ctx.beginPath();
-        ctx.arc(CX, CY, R, 0, Math.PI * 2);
-        ctx.strokeStyle = "rgba(255,255,255,0.05)";
-        ctx.lineWidth = 1;
+        ctx.arc(CX, CY, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(255,255,255,0.07)";
+        ctx.lineWidth = 3;
         ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(CX, CY, ringR, startA, endA);
+        ctx.strokeStyle = phase.color + "99";
+        ctx.lineWidth = 3;
+        ctx.lineCap = "round";
+        ctx.stroke();
+        ctx.lineCap = "butt";
 
         // Trail
         for (let i = 0; i < trail.length; i++) {
           const alpha = (i / trail.length) * 0.5;
-          const radius = 4 + (i / trail.length) * 6;
+          const radius = DOT_R * 0.6 + (i / trail.length) * DOT_R;
           ctx.beginPath();
           ctx.arc(trail[i].x, trail[i].y, radius, 0, Math.PI * 2);
           ctx.fillStyle = `rgba(${hexToRgb(phase.color)},${alpha})`;
@@ -182,18 +185,26 @@
         }
 
         // Glow
-        const grd = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, 22);
+        const glowR = DOT_R * 3.5;
+        const grd = ctx.createRadialGradient(
+          pos.x,
+          pos.y,
+          0,
+          pos.x,
+          pos.y,
+          glowR,
+        );
         grd.addColorStop(0, phase.color + "ff");
         grd.addColorStop(0.4, phase.color + "88");
         grd.addColorStop(1, phase.color + "00");
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 22, 0, Math.PI * 2);
+        ctx.arc(pos.x, pos.y, glowR, 0, Math.PI * 2);
         ctx.fillStyle = grd;
         ctx.fill();
 
         // Core dot
         ctx.beginPath();
-        ctx.arc(pos.x, pos.y, 7, 0, Math.PI * 2);
+        ctx.arc(pos.x, pos.y, DOT_R, 0, Math.PI * 2);
         ctx.fillStyle = "#ffffff";
         ctx.fill();
       }
@@ -223,9 +234,24 @@
               done = true;
               phaseLabel.textContent = "✅ Selesai!";
               phaseLabel.style.color = "#3fb950";
-              timerLabel.textContent = "";
+              timerNum.textContent = "";
+              phaseEmoji.textContent = "";
               cycleLabel.textContent = `${TOTAL_CYCLES} siklus selesai`;
+              document.body.style.background = BASE_BG;
               ctx.clearRect(0, 0, SIZE, SIZE);
+              let repeatBtn = document.getElementById("repeat-btn");
+              if (!repeatBtn) {
+                repeatBtn = document.createElement("button");
+                repeatBtn.id = "repeat-btn";
+                repeatBtn.textContent = "🔄 Ulang";
+                repeatBtn.style.cssText =
+                  "margin-top:14px;padding:10px 28px;font-size:1rem;font-weight:600;color:#e6edf3;background:#21262d;border:1px solid #30363d;border-radius:10px;cursor:pointer;";
+                repeatBtn.onclick = resetExercise;
+                cycleLabel.parentElement.insertBefore(
+                  repeatBtn,
+                  cycleLabel.nextSibling,
+                );
+              }
               return;
             }
             cycleLabel.textContent = `Siklus ${cycleCount} / ${TOTAL_CYCLES}`;
@@ -233,33 +259,71 @@
         }
 
         const currentPhase = PHASES[phaseIdx];
-        const t = phaseElapsed / currentPhase.seconds; // 0..1
-        const pos = getPos(t, phaseIdx);
+        updateRandomWalk();
+        const pos = getPos();
 
         trail.push({ x: pos.x, y: pos.y });
         if (trail.length > TRAIL_LEN) trail.shift();
 
-        drawFrame(pos, currentPhase);
+        const progress = phaseElapsed / currentPhase.seconds;
+        drawFrame(pos, currentPhase, progress);
 
         phaseLabel.textContent = currentPhase.label;
         phaseLabel.style.color = currentPhase.color;
-        timerLabel.textContent = Math.ceil(currentPhase.seconds - phaseElapsed);
+        phaseEmoji.textContent = PHASE_EMOJI[currentPhase.label] || "";
+        phaseEmoji.style.fontSize = "2rem";
+        timerNum.textContent = Math.ceil(currentPhase.seconds - phaseElapsed);
+        document.body.style.background = `rgba(${hexToRgb(currentPhase.color)},0.06)`;
 
         requestAnimationFrame(tick);
+      }
+
+      // --- Reset / repeat ---
+      function resetExercise() {
+        phaseIdx = 0;
+        phaseElapsed = 0;
+        cycleCount = 1;
+        done = false;
+        lastTimestamp = null;
+        trail.length = 0;
+        dotAngle = Math.random() * Math.PI * 2;
+        dotAngleV = (Math.random() - 0.5) * 0.04;
+        dotDist = R * (0.3 + Math.random() * 0.4);
+        dotDistV = (Math.random() - 0.5) * R * 0.02;
+        phaseLabel.style.color = "#58a6ff";
+        cycleLabel.textContent = `Siklus 1 / ${TOTAL_CYCLES}`;
+        document.body.style.background = BASE_BG;
+        const btn = document.getElementById("repeat-btn");
+        if (btn) btn.remove();
+        let c = 3;
+        phaseLabel.textContent = "Bersiap...";
+        phaseEmoji.textContent = "";
+        timerNum.textContent = c;
+        const ci = setInterval(() => {
+          c--;
+          if (c <= 0) {
+            clearInterval(ci);
+            timerNum.textContent = PHASES[0].seconds;
+            requestAnimationFrame(tick);
+          } else {
+            timerNum.textContent = c;
+          }
+        }, 1000);
       }
 
       // Brief countdown before starting
       let countdown = 3;
       phaseLabel.textContent = "Bersiap...";
-      timerLabel.textContent = countdown;
+      phaseEmoji.textContent = "";
+      timerNum.textContent = countdown;
       const countdownInterval = setInterval(() => {
         countdown--;
         if (countdown <= 0) {
           clearInterval(countdownInterval);
-          timerLabel.textContent = PHASES[0].seconds;
+          timerNum.textContent = PHASES[0].seconds;
           requestAnimationFrame(tick);
         } else {
-          timerLabel.textContent = countdown;
+          timerNum.textContent = countdown;
         }
       }, 1000);
     </script>

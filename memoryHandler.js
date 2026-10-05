@@ -1,6 +1,6 @@
 // ====================================================
 // memoryHandler.js — LONG-TERM MEMORY (2 BULAN)
-// Gemini Flash Lite = Notulis; DeepSeek = Konselor CBT
+// Gemini Flash Lite = Notulis; MiMo (callMainAI) = Konselor CBT
 // ====================================================
 
 const MEMORY_EXTRACTION_PROMPT = (
@@ -30,7 +30,7 @@ STRUKTUR OUTPUT JSON:
 TRANSKRIP PERCAKAPAN:
 ${transcriptText}`;
 
-// Blok konteks memori yang disisipkan ke system prompt DeepSeek
+// Blok konteks memori yang disisipkan ke system prompt konselor (MiMo)
 const buildMemoryContextBlock = (
   memoryData,
 ) => `Kamu adalah Xenovia Care, asisten dan teman pendamping CBT (Cognitive Behavioral Therapy) yang empatik, terstruktur, dan rasional.
@@ -86,7 +86,7 @@ const parseMemoryJson = (aiText) => {
   }
 };
 
-// Format memori 60 hari terakhir jadi bullet points untuk system prompt DeepSeek
+// Format memori 60 hari terakhir jadi bullet points untuk system prompt konselor
 const getTwoMonthMemoryFormatted = (chatId) => {
   try {
     const memories = getCbtMemoriesLast60Days(chatId);
@@ -104,6 +104,53 @@ const getTwoMonthMemoryFormatted = (chatId) => {
   } catch (e) {
     Logger.log(`getTwoMonthMemoryFormatted error: ${e}`);
     return "(Belum ada riwayat sesi CBT yang tersimpan.)";
+  }
+};
+
+// Recall on-demand: dipanggil saat Jev gate bilang pesan merujuk kejadian lampau.
+// Cari baris jurnal dengan keyword OR (pola yang sama dengan pencarian topik reframe).
+// ponytail: ceiling = substring keyword, tanpa embedding/ekstraksi LLM;
+// upgrade kalau recall sering meleset: tambah ekstraksi keyword via Gemini.
+const RECALL_STOP_WORDS = new Set([
+  "yang","dan","atau","dari","dengan","untuk","karena","tapi","jadi","sama",
+  "kepada","adalah","itu","ini","tersebut","serta","ataupun","lalu","kalau",
+  "kayak","seperti","waktu","kejadian","pernah","diceritakan","cerita","ceritaku",
+  "banget","udah","sudah","belum","aja","sih","deh","kan","nya","lah","dong",
+  "aku","gue","gua","kamu","kalian","saya","kami","kita","dia","mereka","bisa",
+  "akan","masih","lagi","banyak","sangat","paling","memang","harus","mau","ingin",
+]);
+
+const buildRecallContext = (userMessage) => {
+  try {
+    const keywords = String(userMessage)
+      .toLowerCase()
+      .replace(/[^\p{L}\s]/gu, " ")
+      .split(/\s+/)
+      .filter((w) => w && w.length >= 5 && !RECALL_STOP_WORDS.has(w))
+      .sort((a, b) => b.length - a.length)
+      .slice(0, 4);
+    if (keywords.length < 2) return "";
+
+    const rows = getLatestRowsFromFirebase(300);
+    const scored = rows
+      .map((r) => {
+        const text = `${r.peristiwa ?? ""} ${r.pikiranOtomatis ?? ""}`.toLowerCase();
+        return { r, hits: keywords.filter((kw) => text.includes(kw)).length };
+      })
+      .filter((x) => x.hits >= 2)
+      .sort((a, b) => b.hits - a.hits)
+      .slice(0, 3);
+    if (!scored.length) return "";
+
+    return scored
+      .map(({ r }) => {
+        const date = (r.tanggal || "").slice(0, 10);
+        return `- [${date}] ${r.peristiwa ?? "-"} | Pikiran: ${r.pikiranOtomatis ?? "-"} | Emosi: ${r.emosi ?? "-"}`;
+      })
+      .join("\n");
+  } catch (e) {
+    Logger.log(`buildRecallContext error: ${e}`);
+    return "";
   }
 };
 

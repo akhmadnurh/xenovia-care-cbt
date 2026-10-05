@@ -2,14 +2,17 @@
 // cbtHandler.js — CBT JOURNALING, REFRAMING & ANCHOR
 // ====================================================
 
-const processCBT_Engine = (chatId, userMessage) => {
+const processCBT_Engine = (chatId, userMessage, recallContext = "") => {
   const cache = CacheService.getUserCache();
   let history = JSON.parse(cache.get(`HISTORY_${chatId}`) ?? "[]");
   let currentMode = cache.get(`MODE_${chatId}`) ?? "PURE_LISTENING";
   history.push({ role: "user", content: userMessage });
 
   const { dayName, dateStr, timeStr } = formatTimestampJakarta();
-  const memoryContext = getTwoMonthMemoryFormatted(chatId);
+  let memoryContext = getTwoMonthMemoryFormatted(chatId);
+  if (recallContext) {
+    memoryContext += `\n\n--- REKAM JEJAK TERKAIT (hasil pencarian otomatis) ---\n${recallContext}`;
+  }
   const systemPrompt =
     currentMode === "PURE_LISTENING"
       ? getPureListenerPrompt(dayName, dateStr, timeStr, memoryContext)
@@ -19,8 +22,10 @@ const processCBT_Engine = (chatId, userMessage) => {
     ...history,
   ];
 
-  let aiText = callDeepSeek(messagesPayload, 0.4);
+  let aiText = callMainAI(messagesPayload, 0.4, chatId);
   aiText = sanitizeAIResponse(aiText);
+  // TEMP FLOW LOG
+  flowLog("cbt", `masuk engine mode=${currentMode} len=${aiText.length}`);
 
   if (
     currentMode === "PURE_LISTENING" &&
@@ -28,6 +33,7 @@ const processCBT_Engine = (chatId, userMessage) => {
   ) {
     aiText = aiText.replace("<<<TRANSITION_TO_CBT>>>", "").trim();
     cache.put(`MODE_${chatId}`, "CBT_EVALUATOR", CACHE_TTL_SECONDS);
+    flowLog("cbt", "TRANSITION tag → CBT_EVALUATOR");
   }
 
   let isComplete = false;
@@ -40,8 +46,10 @@ const processCBT_Engine = (chatId, userMessage) => {
     if (jsonMatch?.[1]) {
       try {
         cbtData = JSON.parse(jsonMatch[1].trim());
+        flowLog("cbt", `COMPLETE parsed: ${cbtData?.kategori ?? "?"}`);
       } catch (err) {
         Logger.log(`JSON Parse Error: ${err}`);
+        flowLog("cbt", `COMPLETE JSON parse GAGAL: ${err}`);
       }
     }
     aiText = aiText

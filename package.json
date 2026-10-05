@@ -1,7 +1,7 @@
 {
   "name": "xenovia-care-cbt",
   "version": "1.0.0",
-  "description": "An intelligent mental health assistant for CBT journaling, cognitive reframing, and sensory grounding powered by DeepSeek &amp; Gemini.",
+  "description": "An intelligent mental health assistant for CBT journaling, cognitive reframing, and sensory grounding powered by MiMo, Gemini & Jev.",
   "main": "main.js",
   "scripts": {
     "deploy": "clasp push && clasp deploy -i AKfycbxQ6GJUwwk9MEjnB7X01D8fs2DaMICyPlEb5o426xLjav_9iBiEAof5bEIfA_E1S5E"

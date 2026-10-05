@@ -376,7 +376,7 @@ function _webProcessCBT(userMessage) {
     ...history,
   ];
 
-  let aiText = callDeepSeek(messagesPayload, 0.4);
+  let aiText = callMainAI(messagesPayload, 0.4, WEB_CHAT_ID);
   aiText = sanitizeAIResponse(aiText);
 
   if (

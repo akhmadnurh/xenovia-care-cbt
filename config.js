@@ -7,6 +7,7 @@ const SCRIPT_PROP = PropertiesService.getScriptProperties();
 const CONFIG = {
   TELEGRAM_TOKEN: SCRIPT_PROP.getProperty("TELEGRAM_TOKEN"),
   OPENROUTER_API_KEY: SCRIPT_PROP.getProperty("OPENROUTER_API_KEY"),
+  OPENCODE_API_KEY: SCRIPT_PROP.getProperty("OPENCODE_API_KEY"),
   GEMINI_API_KEY: SCRIPT_PROP.getProperty("GEMINI_API_KEY"),
   GROQ_API_KEY: SCRIPT_PROP.getProperty("GROQ_API_KEY"),
   SPREADSHEET_ID: SCRIPT_PROP.getProperty("SPREADSHEET_ID"),
@@ -22,9 +23,16 @@ const TELEGRAM_ANSWER_CALLBACK_URL = `${TELEGRAM_BASE_URL}/answerCallbackQuery`;
 const GROQ_WHISPER_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${CONFIG.GEMINI_API_KEY}`;
 
+// Engine utama — dual tier: OpenCode Go (primary) → OpenRouter (fallback)
+const OPENCODE_URL = "https://opencode.ai/zen/go/v1/chat/completions";
+const OPENCODE_MODEL = "mimo-v2.6-flash";
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const OPENROUTER_CHAT_URL = `${OPENROUTER_BASE_URL}/chat/completions`;
-const OPENROUTER_MODEL = "deepseek/deepseek-v4-flash";
+const OPENROUTER_MODEL = "xiaomi/mimo-v2.6-flash";
+
+// Jev — klasifikasi terpadu via OpenRouter Decisions API
+const OPENROUTER_JEV_URL = "https://openrouter.ai/api/alpha/decisions";
+const JEV_MODEL = "typesafe/jev-1.13";
 const CACHE_TTL_SECONDS = 21600;
 
 const GROUNDING_STEPS = [
@@ -126,10 +134,18 @@ const getHelpText = () => `🌿 *PANDUAN XENOVIA CARE (CBT BOT)*
 • \`/win\` - 🏆 Pesan penguatan dari catatan positifmu di masa lalu.
 • \`/stats\` - 📊 Statistik emosi & insight klinis dari data CBT-mu.`;
 
-const FALLBACK_DEEPSEEK_ERROR =
-  "Maaf, sistem sedang mengalami sedikit gangguan.";
-const FALLBACK_DEEPSEEK_UNREACHABLE =
-  "Maaf, sistem sedang tidak dapat dijangkau.";
+const FALLBACK_AI_ERROR = "Maaf, sistem sedang mengalami sedikit gangguan.";
+const FALLBACK_AI_UNREACHABLE = "Maaf, sistem sedang tidak dapat dijangkau.";
+
+// Balasan darurat saat Jev mendeteksi krisis (nolak generatif — teks statis).
+// ponytail: nomor darurat umum saja (112); kalau mau hotline khusus mental health, edit di sini.
+const CRISIS_MESSAGE = `Aku sangat berterima kasih kamu mau cerita ini — dan aku serius, ini penting.
+
+Kalau kamu sedang berpikir untuk menyakiti diri sendiri, tolong jangan berjalan sendirian dengan pikiran itu sekarang juga:
+• 🆘 Hubungi layanan darurat **112** (darurat umum Indonesia) atau pergi ke IGD terdekat.
+• 📞 Hubungi orang terdekat yang kamu percaya untuk mendampingimu saat ini.
+
+Aku tetap di sini kalau kamu mau bicara. Tapi bantuan profesional untuk momen ini lebih tepat daripada chat bot.`;
 
 const DEFAULT_ANCHOR_SENTENCE =
   "Sensasi fisik itu cuma background noise. Biarkan lewat, fokuskan mata ke depan.";

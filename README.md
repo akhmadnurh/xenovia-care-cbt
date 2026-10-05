@@ -4,7 +4,8 @@
 
 [![Google Apps Script](https://img.shields.io/badge/Google_Apps_Script-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://script.google.com/)
 [![Telegram Bot](https://img.shields.io/badge/Telegram_Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/bots/api)
-[![DeepSeek AI](https://img.shields.io/badge/DeepSeek_AI-6366F1?style=for-the-badge&logo=openai&logoColor=white)](https://platform.deepseek.com/)
+[![OpenCode](https://img.shields.io/badge/OpenCode-000000?style=for-the-badge&logo=opencode&logoColor=white)](https://opencode.ai/)
+[![OpenRouter](https://img.shields.io/badge/OpenRouter-6366F1?style=for-the-badge&logo=openrouter&logoColor=white)](https://openrouter.ai/)
 [![Google Sheets](https://img.shields.io/badge/Google_Sheets-0F9D58?style=for-the-badge&logo=google-sheets&logoColor=white)](https://sheets.google.com/)
 [![Firebase](https://img.shields.io/badge/Firebase_Realtime_DB-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com/)
 [![Groq](https://img.shields.io/badge/Groq-7700FF?style=for-the-badge&logo=openai&logoColor=white)](https://groq.com/)
@@ -16,7 +17,7 @@
 | Fitur | Deskripsi |
 |:------|:----------|
 | 📝 **Jurnal & Reframing CBT Interaktif** | Bimbingan refleksi terstruktur: Peristiwa → Pikiran Otomatis → Distorsi Kognitif → Bukti Tandingan → Pikiran Seimbang |
-| 🧠 **Long-Term Memory (2 Bulan)** | Memori jangka panjang 60 hari: ekstraksi otomatis sesi CBT ke JSON terstruktur (Gemini Flash Lite) + injeksi konteks dinamis ke System Prompt DeepSeek |
+| 🧠 **Long-Term Memory (2 Bulan)** | Memori jangka panjang 60 hari: ekstraksi otomatis sesi CBT ke JSON terstruktur (Gemini Flash Lite) + injeksi konteks dinamis ke System Prompt konselor |
 | 🎤 **Voice Message Support** | Transkripsi otomatis pesan suara via Groq Whisper untuk input tanpa mengetik |
 | 🏆 **Narasi Kemenangan** | Pengingat naratif keberhasilan berbasis data jurnal masa lalu |
 | 📊 **Statistik Emosi** | Analisis distribusi pola emosi mingguan/bulanan dengan insight AI |
@@ -34,21 +35,21 @@
 
 ### Ringkasan
 
-Setiap kali user **menyimpan jurnal CBT**, transkrip percakapan sesi diekstraksi otomatis menjadi **rangkuman JSON terstruktur** dan disimpan ke Firebase. Saat sesi CBT berikutnya dimulai, rangkuman 2 bulan terakhir disisipkan secara dinamis ke dalam **System Prompt** konselor — sehingga DeepSeek memahami konteks historis user (pemicu berulang, pola distorsi, teknik yang pernah berhasil) tanpa perlu user menceritakan ulang.
+Setiap kali user **menyimpan jurnal CBT**, transkrip percakapan sesi diekstraksi otomatis menjadi **rangkuman JSON terstruktur** dan disimpan ke Firebase. Saat sesi CBT berikutnya dimulai, rangkuman 2 bulan terakhir disisipkan secara dinamis ke dalam **System Prompt** konselor — sehingga konselor AI memahami konteks historis user (pemicu berulang, pola distorsi, teknik yang pernah berhasil) tanpa perlu user menceritakan ulang.
 
 ### Arsitektur Dual-AI Agent
 
 | Agent | Model | Peran |
 |:------|:------|:------|
 | 🗒️ **Notulis Memori** | Gemini Flash Lite | Mengekstrak transkrip sesi CBT menjadi JSON terstruktur (pemicu, sensasi somatik, distorsi kognitif, reframing, actionable anchor) secara otomatis saat user menyimpan jurnal |
-| 💬 **Konselor CBT Utama** | DeepSeek V4 Flash | Membaca rangkuman memori terstruktur 2 bulan terakhir dari Firebase yang disisipkan secara dinamis ke dalam System Prompt |
+| 💬 **Konselor CBT Utama** | MiMo-V2.6-Flash (OpenCode Go → fallback OpenRouter) | Membaca rangkuman memori terstruktur 2 bulan terakhir dari Firebase yang disisipkan secara dinamis ke dalam System Prompt |
 
 **Alur kerja:**
 
 1. User menyelesaikan sesi CBT dan **menyimpan jurnal** (via tombol konfirmasi atau balasan "iya/simpan").
 2. `generateAndSaveCbtMemory()` memanggil **Gemini Flash Lite** (Notulis) dengan transkrip sesi → menghasilkan JSON memori terstruktur.
 3. JSON disimpan ke node `/cbt_memories/{chatId}` di Firebase Realtime DB.
-4. Pada sesi CBT berikutnya, `getTwoMonthMemoryFormatted()` membaca memori 60 hari terakhir → diformat sebagai bullet ringkas → disisipkan ke System Prompt DeepSeek via `buildMemoryContextBlock()`.
+4. Pada sesi CBT berikutnya, `getTwoMonthMemoryFormatted()` membaca memori 60 hari terakhir → diformat sebagai bullet ringkas → disisipkan ke System Prompt konselor via `buildMemoryContextBlock()`.
 
 > 💡 **Efisiensi:** Hanya **rangkuman terstruktur** yang disimpan & dibaca — bukan transkrip mentah. Ini menjaga konteks tetap kecil (anti token overload) sambil mempertahankan kontinuitas empati antar sesi.
 
@@ -61,7 +62,8 @@ Setiap kali user **menyimpan jurnal CBT**, transkrip percakapan sesi diekstraksi
 | Komponen | Teknologi |
 |:---------|:----------|
 | **Runtime** | Google Apps Script (V8 Engine, CommonJS) |
-| **AI Engine (Utama)** | DeepSeek V4 Flash via OpenRouter API |
+| **AI Engine (Utama)** | MiMo-V2.6-Flash — OpenCode Go (primary) → OpenRouter (fallback) |
+| **AI Classifier** | Jev `typesafe/jev-1.13` — OpenRouter Decisions API |
 | **AI Engine (Stats/Grounding/Notulis Memori)** | Google Gemini 3.5 Flash Lite |
 | **Speech-to-Text** | Groq Whisper (Audio Transcription) |
 | **Platform Interface** | Telegram Bot API (Webhook via Apps Script) |
@@ -75,11 +77,41 @@ Setiap kali user **menyimpan jurnal CBT**, transkrip percakapan sesi diekstraksi
 
 - **Google Account** — untuk Apps Script, Google Sheets, dan Service Account
 - **Telegram Bot Token** — dapatkan dari [@BotFather](https://t.me/BotFather)
-- **OpenRouter API Key** — daftar di [openrouter.ai](https://openrouter.ai/)
+- **OpenCode API Key** — primary engine, dari [opencode.ai/console](https://opencode.ai/console) (opsional; kosong = langsung ke OpenRouter)
+- **OpenRouter API Key** — daftar di [openrouter.ai](https://openrouter.ai/) (fallback engine + Jev)
 - **Google Gemini API Key** — daftar di [aistudio.google.com](https://aistudio.google.com/)
 - **Groq API Key** — daftar di [groq.com](https://groq.com/)
 - **Firebase Project** — Realtime Database (mode test/locked) dengan **Legacy Database Secret** diaktifkan
 - **CLASP CLI** — `npm install -g @google/clasp`
+
+### AI Model Stack & Jev Router
+
+**Engine utama (cerita + CBT) — dual tier:**
+
+```
+callMainAI()
+├─ Tier 1: OpenCode Go → mimo-v2.6-flash        (fail-fast, 1 attempt)
+└─ Tier 2: OpenRouter  → xiaomi/mimo-v2.6-flash (retry 3×, lalu pesan fallback)
+```
+
+- Script Property `OPENCODE_API_KEY` diisi untuk Tier 1; kosong = langsung Tier 2.
+- Side task (stats, anchor, reframe, notulis) tetap **Gemini 3.5 Flash Lite**.
+
+**Jev Gate — klasifikasi terpadu (1 request per pesan bebas, slash command dilewati):**
+
+| Pertanyaan | Tipe | Aksi bila positif | Threshold |
+|---|---|---|---|
+| `is_crisis` | noul | Balas `CRISIS_MESSAGE` (statis), hentikan alur | ≥ 0.70 |
+| `save_confirm` | noul (saat pending CBT) | Simpan jurnal CBT | ≥ 0.75 |
+| `mode` (story/cbt/done) | choice | Writeback 2-arah: CBT → PURE_LISTENING | confidence ≥ 0.60 |
+| `needs_past_recall` | noul | `buildRecallContext()` → injeksi baris jurnal terkait ke prompt | ≥ 0.70 |
+
+Precedence saat Jev tersedia: **krisis > konfirmasi simpan > tag `<<<TRANSITION_TO_CBT>>>` dari model > pilihan `mode` Jev**.
+Saat Jev gagal (`null`), tiap poin otomatis kembali ke jalur lama: tanpa gate krisis, regex konfirmasi simpan, transisi mode via tag, tanpa recall on-demand. Threshold dikalibrasi dari `Logger.log("JEV gate ...")` setelah 1–2 minggu data nyata.
+
+**Debug flow (sementara):** setiap request ditulis 1 baris rangkaian event (`voice` → `gate` → `ai` → `cbt` → ...) ke tab **`APP_LOG`** di Spreadsheet (buffer, jadi tidak menambah latency per tahap) + muncul di Editor → Executions. Matikan dengan `FLOW_LOG_ENABLED = false` di `sheetLogger.js`, atau hapus blok `TEMP FLOW LOG` + semua pemanggil `flowLog()`/`flushFlowLog()` setelah verifikasi selesai.
+
+> ⚠️ **Kebijakan OpenCode Go**: Go memantau traffic non-coding. Volume bot ini kecil dan fallback OpenRouter menutup risiko, tetapi patut diketahui — jika key ter-flag, engine otomatis jatuh ke Tier 2 tanpa downtime.
 
 ---
 
@@ -94,7 +126,7 @@ graph LR
     GAS -->|"tulis paralel + sync berkala"| FB["Firebase Realtime DB<br/>/jurnal.json - Cache Layer"]
     GAS -->|"ekstraksi otomatis saat simpan jurnal"| GM["Notulis Memori<br/>Gemini Flash Lite"]
     GM -->|"JSON terstruktur"| MEM["Firebase Realtime DB<br/>/cbt_memories - Long-Term Memory"]
-    MEM -->|"konteks 2 bulan → System Prompt DeepSeek"| GAS
+    MEM -->|"konteks 2 bulan → System Prompt konselor"| GAS
     GAS -->|"CacheService / PropertiesService"| EP["Ephemeral Session Cache<br/>Chat CBT, Grounding, Reframe"]
     FB -->|"baca cepat"| GAS
 ```
@@ -103,8 +135,8 @@ graph LR
 |:------|:------|:------------------|
 | **Google Sheets** | Master Data Store (SSOT) & Visual Backup — data mentah per tab bulanan (contoh: `Juli 2026`, `Agustus 2026`) | Semua data jurnal permanen, arsip, edit manual |
 | **Firebase Realtime DB** | Caching/Speed Layer via REST API — satu koleksi datar di node `/jurnal.json` | Operasi baca kencang: `/win`, `/cari`, `/stats`, `/rekap` (Firebase-first, fallback ke Sheet) |
-| **Firebase Realtime DB (`/cbt_memories`)** | Long-Term Memory — rangkuman JSON terstruktur per chat user | Injeksi konteks 2 bulan ke System Prompt DeepSeek saat sesi CBT |
-| **CacheService / PropertiesService** | Ephemeral session cache — tidak menyentuh Firebase | Chat CBT interaktif (DeepSeek), Grounding 5-4-3-2-1, state Reframe |
+| **Firebase Realtime DB (`/cbt_memories`)** | Long-Term Memory — rangkuman JSON terstruktur per chat user | Injeksi konteks 2 bulan ke System Prompt konselor saat sesi CBT |
+| **CacheService / PropertiesService** | Ephemeral session cache — tidak menyentuh Firebase | Chat CBT interaktif (MiMo), Grounding 5-4-3-2-1, state Reframe |
 
 **Alur Data:**
 
@@ -112,7 +144,7 @@ graph LR
 2. **Baca** — operasi `/win`, `/cari`, `/stats`, `/rekap` membaca dari Firebase terlebih dahulu (`getLatestRowsFromFirebase` / `searchFirebase`); bila Firebase belum dikonfigurasi/kosong, otomatis fallback membaca Google Sheets.
 3. **Sync berkala** — `keepWarm()` (time-driven trigger) menjalankan **Smart Sync** untuk menyatukan seluruh tab jurnal bulanan ke Firebase.
 
-> Sesi chat interaktif (DeepSeek CBT, Grounding 5-4-3-2-1, Reframe) sengaja **tidak** memakai Firebase — cukup `CacheService`/`PropertiesService` yang ephemeral demi efisiensi dan kecepatan respons.
+> Sesi chat interaktif (CBT MiMo, Grounding 5-4-3-2-1, Reframe) sengaja **tidak** memakai Firebase — cukup `CacheService`/`PropertiesService` yang ephemeral demi efisiensi dan kecepatan respons.
 
 ---
 
@@ -238,7 +270,8 @@ Buka **Google Apps Script Editor** (`clasp open`) → tab **Project Settings** �
 | Property Name | Keterangan |
 |:--------------|:-----------|
 | `TELEGRAM_TOKEN` | Token dari BotFather |
-| `OPENROUTER_API_KEY` | API Key OpenRouter (untuk DeepSeek) |
+| `OPENCODE_API_KEY` | API Key OpenCode Go (primary engine; opsional) |
+| `OPENROUTER_API_KEY` | API Key OpenRouter (fallback engine + Jev) |
 | `GEMINI_API_KEY` | API Key Google Gemini |
 | `GROQ_API_KEY` | API Key Groq (untuk Whisper) |
 | `SPREADSHEET_ID` | ID Google Spreadsheet |
@@ -408,7 +441,7 @@ $tc(reg, tc(reg, wg("https://docs.google.com/spreadsheets/d/e/{PUBLISHED_SHEET_I
 xenovia-care-cbt/
 ├── appsscript.json      # Konfigurasi Google Apps Script (timezone, runtime V8)
 ├── config.js            # Konstanta & konfigurasi (API keys, prompt, grounding steps)
-├── services.js          # Layer API (Telegram, DeepSeek/OpenRouter, Gemini, Groq Whisper)
+├── services.js          # Layer API (Telegram, MiMo/Go+OpenRouter, Jev gate, Gemini, Groq Whisper)
 ├── firebaseService.js   # Layer Firebase Realtime DB (caching/speed layer + cbt_memories: save, sync, getLatest, search, keepWarm helpers)
 ├── sheetLogger.js       # Operasi Google Sheets (simpan data, rekap, statistik, cari)
 ├── cbtHandler.js        # Mesin CBT (jurnal interaktif, reframing, anchor, win)

@@ -116,15 +116,52 @@ const doPost = (e) => {
           userMessage = userMessage
             ? `${userMessage} ${transcribedText}`
             : transcribedText;
+        flowLog("voice", `transcribe ${transcribedText ? "OK" : "GAGAL"}`);
+      } else {
+        flowLog("voice", "fileUrl kosong");
       }
     }
     if (!userMessage) return;
 
-    const pendingCbt = CacheService.getUserCache().get(`PENDING_CBT_${chatId}`);
-    if (
+    const userCache = CacheService.getUserCache();
+    const pendingCbt = userCache.get(`PENDING_CBT_${chatId}`);
+    // Jev gate — satu callJev per pesan bebas; slash command dilewati (intent sudah eksplisit).
+    // null = Jev gagal → tiap poin di bawah otomatis balik ke jalur lama.
+    const isSlashCmd = userMessage.startsWith("/");
+    if (isSlashCmd) flowLog("gate", "skip (slash command)");
+    const gate = isSlashCmd
+      ? null
+      : runMessageGate(
+          chatId,
+          userMessage,
+          userCache.get(`MODE_${chatId}`) ?? "PURE_LISTENING",
+          !!pendingCbt,
+        );
+
+    // 1) Krisis — override segalanya (balasan statis, tanpa LLM)
+    if (gate && gate.crisis >= JEV_THRESHOLD.crisis) {
+      flowLog("route", `⛔ CRISIS (${gate.crisis}) → balas statis`);
+      sendTelegramMessage(chatId, CRISIS_MESSAGE);
+      return;
+    }
+
+    // 2) Konfirmasi simpan — Jev bila tersedia; regex lama tetap fallback saat Jev null
+    const confirmedSave =
       pendingCbt &&
-      /^(iya|ya|iy|y|iyaa|simpan|save|yes|oke|ok)\b/i.test(userMessage.trim())
-    ) {
+      (gate
+        ? gate.save >= JEV_THRESHOLD.save
+        : /^(iya|ya|iy|y|iyaa|simpan|save|yes|oke|ok)\b/i.test(
+            userMessage.trim(),
+          ));
+    if (pendingCbt) {
+      flowLog(
+        "route",
+        confirmedSave
+          ? `💾 simpan via ${gate ? `jev(${gate.save})` : "regex"}`
+          : `pending CBT ada, belum konfirm (save=${gate ? gate.save : "n/a"})`,
+      );
+    }
+    if (confirmedSave) {
       const cbtData = JSON.parse(pendingCbt);
       saveToSheet(cbtData);
       saveToFirebase(cbtData);
@@ -143,9 +180,22 @@ const doPost = (e) => {
       return;
     }
 
+    // 3) Mode writeback 2-arah: gate bilang "story" & percaya diri, mode sekarang CBT
+    //    → buka lagi PURE_LISTENING (arah CBT→cerita hanya bisa dari gate; cerita→CBT tetap via tag model)
+    if (
+      gate &&
+      gate.mode === "story" &&
+      gate.modeConfidence >= JEV_THRESHOLD.mode &&
+      userCache.get(`MODE_${chatId}`) === "CBT_EVALUATOR"
+    ) {
+      userCache.put(`MODE_${chatId}`, "PURE_LISTENING", CACHE_TTL_SECONDS);
+      flowLog("mode", `CBT → PURE_LISTENING (conf=${gate.modeConfidence})`);
+    }
+
     if (
       message.reply_to_message?.text?.includes("Kata Kunci Belum Dimasukkan")
     ) {
+      flowLog("route", "reply-to search → handleCari");
       sendTelegramMessage(
         chatId,
         "🔍 *Sedang mencari rekam jejak CBT masa lalu...* Mohon tunggu.",
@@ -155,6 +205,7 @@ const doPost = (e) => {
     }
 
     const lowerText = userMessage.toLowerCase();
+    if (lowerText.startsWith("/")) flowLog("cmd", lowerText);
     if (["/help", "/start"].includes(lowerText)) {
       sendTelegramMessage(chatId, getHelpText());
       return;
@@ -240,10 +291,11 @@ const doPost = (e) => {
       return;
     }
 
-    // Grounding state bypass — route to Gemini, bypass DeepSeek CBT engine
+    // Grounding state bypass — route to Gemini, bypass CBT engine (callMainAI)
     const props = PropertiesService.getUserProperties();
     const groundingState = props.getProperty(`GROUNDING_STATE_${chatId}`);
     if (groundingState) {
+      flowLog("route", "grounding bypass");
       const reply = processGroundingStep(chatId, userMessage, groundingState);
       sendTelegramMessage(chatId, reply);
       return;
@@ -252,6 +304,7 @@ const doPost = (e) => {
     // Attention shift state bypass
     const attentionState = props.getProperty(`ATTENTION_STATE_${chatId}`);
     if (attentionState) {
+      flowLog("route", "attention bypass");
       const reply = processAttentionShiftStep(
         chatId,
         userMessage,
@@ -310,8 +363,16 @@ const doPost = (e) => {
       return;
     }
 
-    const reply = processCBT_Engine(chatId, userMessage);
+    // Recall on-demand: hanya saat Jev bilang pesan merujuk kejadian lampau
+    const recallOn = gate && gate.recall >= JEV_THRESHOLD.recall;
+    const recallContext = recallOn ? buildRecallContext(userMessage) : "";
+    flowLog(
+      "recall",
+      recallOn ? `ON → ${recallContext ? "ada hasil" : "tanpa hasil"}` : "off",
+    );
+    const reply = processCBT_Engine(chatId, userMessage, recallContext);
     if (reply.isComplete && reply.cbtData) {
+      flowLog("cbt", "COMPLETE → menunggu konfirmasi simpan");
       const cache = CacheService.getUserCache();
       cache.put(
         `PENDING_CBT_${chatId}`,
@@ -347,6 +408,7 @@ const doPost = (e) => {
       }
     }
   } catch (err) {
+    flowLog("error", err?.message ?? String(err));
     Logger.log(`Error in doPost: ${err}`);
     try {
       const data = JSON.parse(e.postData.contents);
@@ -361,6 +423,16 @@ const doPost = (e) => {
     } catch (fallbackErr) {
       Logger.log(`Fallback message also failed: ${fallbackErr}`);
     }
+  } finally {
+    let finalChatId = "-";
+    try {
+      const data = JSON.parse(e.postData.contents);
+      finalChatId =
+        data.callback_query?.message?.chat?.id || data.message?.chat?.id || "-";
+    } catch (ignored) {
+      /* payload tidak valid */
+    }
+    flushFlowLog(finalChatId);
   }
 };
 

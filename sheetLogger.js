@@ -2,6 +2,41 @@
 // sheetLogger.js — GOOGLE SHEETS & DATA STORAGE
 // ====================================================
 
+// ===== TEMP FLOW LOG (sementara) — hapus blok ini + semua
+// pemanggil flowLog()/flushFlowLog() setelah flow diverifikasi =====
+// Buffer per execution: semua event dikumpulkan di memori,
+// ditulis 1 baris ke tab "APP_LOG" saat request selesai (finally).
+const FLOW_LOG_ENABLED = true; // false = cuma muncul di Executions, tidak tulis Sheet
+const _flowBuffer = [];
+
+const flowLog = (stage, detail) => {
+  const line = `${stage}: ${detail}`;
+  Logger.log(`[FLOW] ${line}`);
+  if (FLOW_LOG_ENABLED) _flowBuffer.push(line);
+};
+
+const flushFlowLog = (chatId = "-") => {
+  if (!FLOW_LOG_ENABLED || !_flowBuffer.length) return;
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sh = ss.getSheetByName("APP_LOG");
+    if (!sh) {
+      sh = ss.insertSheet("APP_LOG");
+      sh.appendRow(["Waktu", "Chat ID", "Flow"]);
+      sh.getRange(1, 1, 1, 3).setFontWeight("bold");
+      sh.setFrozenRows(1);
+      sh.setColumnWidth(1, 160);
+      sh.setColumnWidth(2, 100);
+      sh.setColumnWidth(3, 600);
+    }
+    sh.appendRow([new Date(), String(chatId), _flowBuffer.join("  →  ")]);
+  } catch (err) {
+    Logger.log(`flushFlowLog error: ${err}`);
+  }
+  _flowBuffer.length = 0;
+};
+// ===== END TEMP FLOW LOG =====
+
 const saveToSheet = (data) => {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const now = new Date();
